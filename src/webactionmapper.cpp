@@ -134,6 +134,8 @@ void WebActionMapper::updateCurrent(QWebPage *currentParent)
         return;
     }
     QAction *source = m_currentParent->action(m_webAction);
+    if (!source)
+        return;
     m_root->setChecked(source->isChecked());
     m_root->setEnabled(source->isEnabled());
     connect(m_currentParent, SIGNAL(destroyed(QObject *)),

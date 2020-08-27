@@ -1,0 +1,95 @@
+<?xml encoding="UTF-8" version="1.0"?>
+<html>
+<head>
+<title>%1</title>
+<style>
+body {
+  padding: 1em 0em;
+  background: #eeeeee;
+}
+hr {
+  color: lightgray;
+  width: 100%;
+}
+img {
+  float: left;
+  opacity: .8;
+}
+#box {
+  background: white;
+  border: 1px solid lightgray;
+  width: 600px;
+  padding: 30px;
+  margin: auto;
+}
+h1 {
+  font-size: 130%;
+  font-weight: bold;
+  border-bottom: 1px solid lightgray;
+  margin-left: 48px;
+}
+h2 {
+  font-size: 100%;
+  font-weight: normal;
+  border-bottom: 1px solid lightgray;
+  margin-left: 48px;
+}
+table {
+  font-size: 80%;
+  padding-left: 48px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  margin: 5px 0;
+  width: 100%;
+}
+.modified {
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.size {
+  text-align: right;
+  vertical-align: top;
+  white-space: nowrap;
+  padding-right: 8px;
+}
+.name {
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+  width: 100%
+}
+%3
+#reloadButton {
+  padding-left: 48px;
+}
+body:not(.showDotFiles) .hidden {
+  display: none;
+}
+.showHide{
+  font-size: 80%;
+  padding-left: 48px;
+}
+</style>
+<script type="text/javascript">
+function showHide()
+{
+    if (document.body.className.indexOf("showDotFiles") != -1)
+        document.body.className = document.body.className.replace("showDotFiles", "");
+    else
+        document.body.className += " showDotFiles";
+}
+</script>
+</head>
+<body>
+  <div id="box">
+    <h1>%2</h1>
+    <div class='showHide'>
+        <input type="checkbox" onchange="showHide()" name="Show Hidden Files"/> %5
+    </div>
+    <table>
+%4
+    </table>
+  </div>
+</body>
+</html>

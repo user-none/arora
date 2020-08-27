@@ -1,7 +1,8 @@
-<ui version="4.0" >
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
  <class>SearchBanner</class>
- <widget class="QWidget" name="SearchBanner" >
-  <property name="geometry" >
+ <widget class="QWidget" name="SearchBanner">
+  <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
@@ -9,34 +10,31 @@
     <height>36</height>
    </rect>
   </property>
-  <property name="sizePolicy" >
-   <sizepolicy vsizetype="Minimum" hsizetype="Preferred" >
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
     <horstretch>0</horstretch>
     <verstretch>0</verstretch>
    </sizepolicy>
   </property>
-  <property name="windowTitle" >
-   <string>Form</string>
-  </property>
-  <layout class="QHBoxLayout" name="horizontalLayout" >
-   <property name="spacing" >
+  <layout class="QHBoxLayout" name="horizontalLayout">
+   <property name="spacing">
     <number>-1</number>
    </property>
-   <property name="leftMargin" >
+   <property name="leftMargin">
     <number>12</number>
    </property>
-   <property name="topMargin" >
+   <property name="topMargin">
     <number>0</number>
    </property>
-   <property name="bottomMargin" >
+   <property name="bottomMargin">
     <number>0</number>
    </property>
    <item>
-    <spacer name="horizontalSpacer" >
-     <property name="orientation" >
+    <spacer name="horizontalSpacer">
+     <property name="orientation">
       <enum>Qt::Horizontal</enum>
      </property>
-     <property name="sizeHint" stdset="0" >
+     <property name="sizeHint" stdset="0">
       <size>
        <width>26</width>
        <height>20</height>
@@ -45,32 +43,41 @@
     </spacer>
    </item>
    <item>
-    <widget class="QLabel" name="searchInfo" >
-     <property name="text" >
-      <string>TextLabel</string>
+    <widget class="QLabel" name="searchInfo"/>
+   </item>
+   <item>
+    <widget class="QToolButton" name="highlightAllButton">
+     <property name="text">
+      <string>Highlight All</string>
+     </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="checkable">
+      <bool>true</bool>
      </property>
     </widget>
    </item>
    <item>
-    <widget class="QToolButton" name="previousButton" >
-     <property name="text" >
-      <string>&lt;</string>
+    <widget class="QToolButton" name="previousButton">
+     <property name="text">
+      <string notr="true">&lt;</string>
      </property>
     </widget>
    </item>
    <item>
-    <widget class="QToolButton" name="nextButton" >
-     <property name="text" >
-      <string>></string>
+    <widget class="QToolButton" name="nextButton">
+     <property name="text">
+      <string notr="true">&gt;</string>
      </property>
     </widget>
    </item>
    <item>
-    <widget class="SearchLineEdit" name="searchLineEdit" />
+    <widget class="SearchLineEdit" name="searchLineEdit"/>
    </item>
    <item>
-    <widget class="QPushButton" name="doneButton" >
-     <property name="text" >
+    <widget class="QPushButton" name="doneButton">
+     <property name="text">
       <string>Done</string>
      </property>
     </widget>

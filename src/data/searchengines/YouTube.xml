@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+    <ShortName >YouTube</ShortName>
+    <Description >YouTube</Description>
+    <Url method="get" type="text/html" template="http://www.youtube.com/results?search_query={searchTerms}&amp;search=Search" />
+    <Url method="get" type="application/x-suggestions+json" template="http://suggestqueries.google.com/complete/search?ds=yt&amp;json=t&amp;hl={language}&amp;q={searchTerms}&amp;nolabels=t" />
+    <Image width="16" height="16">http://www.youtube.com/favicon.ico</Image>
+</OpenSearchDescription>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+    <ShortName>GitHub</ShortName>
+    <Description>Search GitHub</Description>
+    <Url type="text/html" method="get" template="http://github.com/search">
+        <Param name="q" value="{searchTerms}"/>
+        <Parameter name="b" value="foo"/>
+    </Url>
+    <Url method="post" type="application/x-suggestions+json" template="http://github.com/suggestions">
+        <Parameter name="bar" value="baz"/>
+    </Url>
+</OpenSearchDescription>

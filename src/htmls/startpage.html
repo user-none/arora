@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+    <title></title>
+    <link rel="stylesheet" href="qrc:/startpage.css" type="text/css" />
+    <script type="text/javascript">
+        //<![CDATA[
+        function update()
+        {
+            var searchEngine = window.arora.currentEngine;
+
+            document.title = window.arora.translate('Welcome to Arora!');
+            document.getElementById('headerTitle').innerHTML = window.arora.translate('Arora Start');
+            document.getElementById('searchButton').value = window.arora.translate('Search!');
+            document.getElementById('footer').innerHTML = window.arora.translate('Search results provided by') + ' '
+                                                          + searchEngine.name + ' | ' + '<a href="http://arora-browser.org/">'
+                                                          + window.arora.translate('About Arora') + '</a>';
+            document.getElementById('lineEdit').placeholder = searchEngine.name;
+
+            // Try to change the direction of the page:
+            //   This string is defined in QApplication
+            //   src/gui/kernel/qapplication.cpp#qt_detectRTLLanguage()
+            //   it should contain LTR or RTL
+
+            var newDir = window.arora.translate('QT_LAYOUT_DIRECTION');
+            newDir = newDir.toLowerCase();
+            if ((newDir != 'ltr') && (newDir != 'rtl'))
+                newDir = 'ltr';
+            document.getElementsByTagName('body')[0].setAttribute('dir', newDir);
+        }
+
+        function formSubmitted()
+        {
+            var string = lineEdit.value;
+
+            if (string.length == 0)
+                return;
+
+            var url = window.arora.searchUrl(string);
+            window.location.href = url;
+        }
+        //]]>
+    </script>
+</head>
+<body onload="document.forms[0].lineEdit.select(); update();">
+    <div id="header">
+        <h1 id="headerTitle"></h1>
+        <img src="qrc:/arora.svg" alt="Arora"/>
+    </div>
+    <div id="search">
+        <form action="javascript:formSubmitted();">
+            <fieldset>
+                <input id="lineEdit" name="lineEdit" type="text" />
+                <input id="searchButton" type="submit" />
+            </fieldset>
+        </form>
+    </div>
+    <div id="footer"></div>
+</body>
+</html>

@@ -2,91 +2,108 @@ CONFIG += qt warn_on
 contains(QT_BUILD_PARTS, tools): CONFIG += uitools
 else : DEFINES += QT_NO_UITOOLS
 
-win32 : Debug : CONFIG += console
+win32|os2 : Debug : CONFIG += console
 
 INCLUDEPATH += $$PWD
 DEPENDPATH += $$PWD
 
-RCC_DIR = .rcc
-UI_DIR = .ui
-MOC_DIR = .moc
-OBJECTS_DIR = .obj
-
 QT += webkit network
 
-GITVERSION=$$system(git log -n1 --pretty=format:%h)
-GITCHANGENUMBER=$$system(git log --pretty=format:%h | wc -l)
-DEFINES += GITVERSION=\"\\\"$$GITVERSION\\\"\"
-DEFINES += GITCHANGENUMBER=\"\\\"$$GITCHANGENUMBER\\\"\"
+# Share object files for faster compiling
+RCC_DIR     = $$PWD/.rcc
+UI_DIR      = $$PWD/.ui
+MOC_DIR     = $$PWD/.moc
+OBJECTS_DIR = $$PWD/.obj
+
+exists(../.git/HEAD) {
+    GITVERSION=$$system(git log -n1 --pretty=format:%h)
+    !isEmpty(GITVERSION) {
+        GITCHANGENUMBER=$$system(git log --pretty=format:%h | wc -l)
+        DEFINES += GITVERSION=\"\\\"$$GITVERSION\\\"\"
+        DEFINES += GITCHANGENUMBER=\"\\\"$$GITCHANGENUMBER\\\"\"
+    }
+}
 
 FORMS += \
     aboutdialog.ui \
-    addbookmarkdialog.ui \
-    bookmarks.ui \
-    cookies.ui \
-    cookiesexceptions.ui \
+    autofilldialog.ui \
+    acceptlanguagedialog.ui \
     downloaditem.ui \
     downloads.ui \
-    history.ui \
-    passworddialog.ui \
-    proxy.ui \
     searchbanner.ui \
     settings.ui
 
 HEADERS += \
     aboutdialog.h \
+    acceptlanguagedialog.h \
     autosaver.h \
-    bookmarks.h \
+    autofilldialog.h \
+    autofillmanager.h \
     browserapplication.h \
     browsermainwindow.h \
     clearprivatedata.h \
-    cookiejar.h \
+    clearbutton.h \
     downloadmanager.h \
-    edittableview.h \
-    edittreeview.h \
-    history.h \
     modelmenu.h \
-    networkaccessmanager.h \
+    modeltoolbar.h \
+    plaintexteditsearch.h \
+    searchbar.h \
+    searchbutton.h \
     searchlineedit.h \
     settings.h \
-    squeezelabel.h \
+    sourcehighlighter.h \
+    sourceviewer.h \
     tabbar.h \
     tabwidget.h \
     toolbarsearch.h \
-    urllineedit.h \
     webactionmapper.h \
+    webpage.h \
     webview.h \
-    webviewsearch.h \
-    xbel.h
+    webviewsearch.h
 
 SOURCES += \
     aboutdialog.cpp \
+    acceptlanguagedialog.cpp \
     autosaver.cpp \
-    bookmarks.cpp \
+    autofilldialog.cpp \
+    autofillmanager.cpp \
     browserapplication.cpp \
     browsermainwindow.cpp \
     clearprivatedata.cpp \
-    cookiejar.cpp \
+    clearbutton.cpp \
     downloadmanager.cpp \
-    edittableview.cpp \
-    edittreeview.cpp \
-    history.cpp \
     modelmenu.cpp \
-    networkaccessmanager.cpp \
+    modeltoolbar.cpp \
+    plaintexteditsearch.cpp \
+    searchbar.cpp \
+    searchbutton.cpp \
     searchlineedit.cpp \
     settings.cpp \
-    squeezelabel.cpp \
+    sourcehighlighter.cpp \
+    sourceviewer.cpp \
     tabbar.cpp \
     tabwidget.cpp \
     toolbarsearch.cpp \
-    urllineedit.cpp \
     webactionmapper.cpp \
+    webpage.cpp \
     webview.cpp \
-    webviewsearch.cpp \
-    xbel.cpp
+    webviewsearch.cpp
 
-RESOURCES += data/data.qrc \
-    htmls/htmls.qrc
+include(adblock/adblock.pri)
+include(bookmarks/bookmarks.pri)
+include(history/history.pri)
+include(locationbar/locationbar.pri)
+include(network/network.pri)
+include(opensearch/opensearch.pri)
+include(qwebplugins/qwebplugins.pri)
+include(utils/utils.pri)
+include(useragent/useragent.pri)
+
+RESOURCES += \
+    $$PWD/data/data.qrc \
+    $$PWD/data/graphics/graphics.qrc \
+    $$PWD/data/searchengines/searchengines.qrc \
+    $$PWD/htmls/htmls.qrc
 
 DISTFILES += ../AUTHORS \
     ../ChangeLog \
@@ -95,7 +112,12 @@ DISTFILES += ../AUTHORS \
     ../README
 
 win32 {
-    RC_FILE = browser.rc
+    RC_FILE = $$PWD/browser.rc
+    LIBS += -luser32
+}
+
+os2 {
+    RC_FILE = $$PWD/browser_os2.rc
 }
 
 mac {
@@ -103,16 +125,13 @@ mac {
     QMAKE_INFO_PLIST = Info_mac.plist
 }
 
+include(../webkittrunk.pri)
+
 unix {
-    isEmpty(PREFIX){
-        PREFIX = /usr/local
-    }
-
-    BINDIR = $$PREFIX/bin
-    DATADIR = $$PREFIX/share
     PKGDATADIR = $$DATADIR/arora
-
     DEFINES += DATADIR=\\\"$$DATADIR\\\" PKGDATADIR=\\\"$$PKGDATADIR\\\"
 }
 
-include(webkittrunk.pri)
+win32 {
+    LIBS += -ladvapi32
+}

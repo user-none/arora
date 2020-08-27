@@ -6,5 +6,6 @@ INCLUDEPATH += .
 include(../manualtests.pri)
 
 # Input
-SOURCES += main.cpp
+RESOURCES =
+SOURCES += main_downloadmanager.cpp
 HEADERS +=

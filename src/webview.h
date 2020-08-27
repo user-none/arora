@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Benjamin C. Meyer <ben@meyerhome.net>
+ * Copyright 2008-2009 Benjamin C. Meyer <ben@meyerhome.net>
  * Copyright 2008 Ariya Hidayat <ariya.hidayat@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -66,46 +66,16 @@
 
 #include <qwebview.h>
 
-QT_BEGIN_NAMESPACE
-class QAuthenticator;
-class QMouseEvent;
-class QNetworkProxy;
-class QNetworkReply;
-class QSslError;
-QT_END_NAMESPACE
+#include "tabwidget.h"
 
-class BrowserMainWindow;
-class WebPage : public QWebPage
-{
-    Q_OBJECT
-
-signals:
-    void loadingUrl(const QUrl &url);
-
-public:
-    WebPage(QObject *parent = 0);
-    BrowserMainWindow *mainWindow();
-
-protected:
-    bool acceptNavigationRequest(QWebFrame *frame, const QNetworkRequest &request, NavigationType type);
-    QWebPage *createWindow(QWebPage::WebWindowType type);
-#if !defined(QT_NO_UITOOLS)
-    QObject *createPlugin(const QString &classId, const QUrl &url, const QStringList &paramNames, const QStringList &paramValues);
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+#include <qwebelement.h>
+class QLabel;
 #endif
 
-private slots:
-    void handleUnsupportedContent(QNetworkReply *reply);
-
-private:
-    friend class WebView;
-
-    // set the webview mousepressedevent
-    Qt::KeyboardModifiers m_keyboardModifiers;
-    Qt::MouseButtons m_pressedButtons;
-    bool m_openInNewTab;
-    QUrl m_loadingUrl;
-};
-
+class BrowserMainWindow;
+class TabWidget;
+class WebPage;
 class WebView : public QWebView
 {
     Q_OBJECT
@@ -114,11 +84,31 @@ public:
     WebView(QWidget *parent = 0);
     WebPage *webPage() const { return m_page; }
 
-    void loadUrl(const QUrl &url);
+#if !(QT_VERSION >= 0x040600)
+    static QUrl guessUrlFromString(const QString &url);
+#endif
+    void loadSettings();
+
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+    void keyReleaseEvent(QKeyEvent *event);
+    void focusOutEvent(QFocusEvent *event);
+#endif
+
+    void loadUrl(const QUrl &url, const QString &title = QString());
     QUrl url() const;
 
     QString lastStatusBarText() const;
     inline int progress() const { return m_progress; }
+    TabWidget *tabWidget() const;
+
+signals:
+    void search(const QUrl &searchUrl, TabWidget::OpenUrlIn openIn);
+
+public slots:
+    void zoomIn();
+    void zoomOut();
+    void resetZoom();
+    void applyZoom();
 
 protected:
     void mousePressEvent(QMouseEvent *event);
@@ -126,28 +116,54 @@ protected:
     void contextMenuEvent(QContextMenuEvent *event);
     void wheelEvent(QWheelEvent *event);
     void resizeEvent(QResizeEvent *event);
+    void dragEnterEvent(QDragEnterEvent *event);
+    void dragMoveEvent(QDragMoveEvent *event);
+    void dropEvent(QDropEvent *event);
+    void keyPressEvent(QKeyEvent *event);
+
+private:
+    int levelForZoom(int zoom);
 
 private slots:
     void setProgress(int progress);
     void loadFinished();
     void setStatusBarText(const QString &string);
     void downloadRequested(const QNetworkRequest &request);
-    void openLinkInNewTab();
-    void openLinkInNewWindow();
+    void openActionUrlInNewTab();
+    void openActionUrlInNewWindow();
     void downloadLinkToDisk();
     void copyLinkToClipboard();
-    void openImageInNewTab();
     void openImageInNewWindow();
     void downloadImageToDisk();
     void copyImageToClipboard();
     void copyImageLocationToClipboard();
+    void blockImage();
     void bookmarkLink();
+    void searchRequested(QAction *action);
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+    void addSearchEngine();
+    void hideAccessKeys();
+    void accessKeyShortcut();
+#endif
 
 private:
     QString m_statusBarText;
     QUrl m_initialUrl;
     int m_progress;
+    int m_currentZoom;
+    QList<int> m_zoomLevels;
     WebPage *m_page;
+
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+    bool m_enableAccessKeys;
+    bool checkForAccessKey(QKeyEvent *event);
+    void showAccessKeys();
+    void makeAccessKeyLabel(const QChar &accessKey, const QWebElement &element);
+    QList<QLabel*> m_accessKeyLabels;
+    QHash<QChar, QWebElement> m_accessKeyNodes;
+    bool m_accessKeysPressed;
+#endif
 };
 
 #endif
+

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Dialog</class>
+ <widget class="QDialog" name="Dialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>790</width>
+    <height>398</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Dialog</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout_4">
+   <item>
+    <widget class="QSplitter" name="splitter">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <widget class="QWidget" name="layoutWidget">
+      <layout class="QVBoxLayout" name="verticalLayout_3">
+       <item>
+        <widget class="EditListView" name="listView"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="listViewRemoveAllButton">
+         <property name="text">
+          <string>RemoveAll</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="layoutWidget">
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <item>
+        <widget class="EditTreeView" name="treeView"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="treeViewRemoveAllButton">
+         <property name="text">
+          <string>RemoveAll</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="layoutWidget">
+      <layout class="QVBoxLayout" name="verticalLayout">
+       <item>
+        <widget class="EditTableView" name="tableView"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="tableViewRemoveAllButton">
+         <property name="text">
+          <string>RemoveAll</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>EditListView</class>
+   <extends>QListView</extends>
+   <header>editlistview.h</header>
+  </customwidget>
+  <customwidget>
+   <class>EditTreeView</class>
+   <extends>QTreeView</extends>
+   <header>edittreeview.h</header>
+  </customwidget>
+  <customwidget>
+   <class>EditTableView</class>
+   <extends>QTableView</extends>
+   <header>edittableview.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

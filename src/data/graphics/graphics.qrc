@@ -1,0 +1,10 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/graphics">
+    <file>addtab.png</file>
+    <file>closetab.png</file>
+    <file>defaulticon.png</file>
+    <file>history.png</file>
+    <file>loading.gif</file>
+    <file>private.png</file>
+</qresource>
+</RCC>

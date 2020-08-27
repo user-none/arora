@@ -1,12 +1,23 @@
 TEMPLATE = subdirs
-SUBDIRS  = addbookmarkdialog \
-	autosaver \
-	downloadmanager \
-	edittreeview \
-	history \
-	historyfiltermodel \
-	searchlineedit \
-	tabbar \
-	tabwidget \
-	webactionmapper \
-	xbel
+SUBDIRS  = \
+    adblock \
+    addbookmarkdialog \
+    autosaver \
+    bookmarknode \
+    cookiejar \
+    historyfiltermodel \
+    historymanager \
+    modeltoolbar \
+    opensearchengine \
+    opensearchmanager \
+    opensearchreader \
+    opensearchwriter \
+    searchlineedit \
+    tabbar \
+    tabwidget \
+    utils \
+    webactionmapper \
+    webpage \
+    xbel
+
+CONFIG += ordered

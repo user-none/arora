@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+    <ShortName>Arora!</ShortName>
+    <Description>a cross platform web browser built using Qt and WebKit</Description>
+    <Url method="get" type="text/html" template="http://foobar.barfoo/search"/>
+    <Url method="post" type="application/x-suggestions+json" template="http://foobar.barfoo/suggest"/>
+</OpenSearchDescription>

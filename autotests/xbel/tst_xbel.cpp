@@ -18,7 +18,10 @@
  */
 
 #include <QtTest/QtTest>
-#include <xbel.h>
+
+#include "bookmarknode.h"
+#include "xbelreader.h"
+#include "xbelwriter.h"
 
 class tst_Xbel : public QObject
 {
@@ -90,8 +93,10 @@ void tst_Xbel::xbelreader_data()
 void tst_Xbel::xbelreader()
 {
     SubXbelReader reader;
-    QVERIFY(reader.read(QString()));
+    BookmarkNode *root = reader.read(QString());
+    QVERIFY(root);
     QVERIFY(reader.error() == QXmlStreamReader::NoError);
+    delete root;
 }
 
 Q_DECLARE_METATYPE(QXmlStreamReader::Error)
@@ -105,7 +110,7 @@ void tst_Xbel::read_data()
     QTest::newRow("bad") << QString("bad.xbel") << QXmlStreamReader::CustomError;
 }
 
-// public BookmarkNode* read(QString const& fileName)
+// public BookmarkNode *read(QString const &fileName)
 void tst_Xbel::read()
 {
     QFETCH(QString, fileName);
@@ -113,7 +118,9 @@ void tst_Xbel::read()
 
     SubXbelReader reader;
 
-    QVERIFY(reader.read(fileName));
+    BookmarkNode *root = reader.read(fileName);
+    QVERIFY(root);
+    delete root;
     QCOMPARE(reader.error(), error);
 }
 
@@ -122,7 +129,7 @@ void tst_Xbel::readProperly()
     SubXbelReader reader;
     BookmarkNode *root = reader.read("all.xbel");
     QCOMPARE(reader.error(), QXmlStreamReader::NoError);
-    QList<BookmarkNode *>children = root->children();
+    QList<BookmarkNode*>children = root->children();
     QCOMPARE(children.count(), 4);
     // null folder
     QCOMPARE(children[0]->children().count(), 0);
@@ -137,8 +144,7 @@ void tst_Xbel::readProperly()
     QCOMPARE(children[1]->expanded, true);
     QCOMPARE(children[1]->type(), BookmarkNode::Folder);
 
-    // folder with two bookmarks
-    QCOMPARE(children[2]->children().count(), 2);
+    QCOMPARE(children[2]->children().count(), 3);
     QCOMPARE(children[2]->title, QString("Folder Title"));
     QCOMPARE(children[2]->url, QString());
     QCOMPARE(children[2]->expanded, false);
@@ -156,6 +162,8 @@ void tst_Xbel::readProperly()
         QCOMPARE(children[1]->url, QString("http://www.bar.com/"));
         QCOMPARE(children[1]->expanded, false);
         QCOMPARE(children[1]->type(), BookmarkNode::Bookmark);
+
+        QCOMPARE(children[2]->title, QString("Title 3"));
     }
 
     children = root->children();
@@ -185,6 +193,7 @@ void tst_Xbel::readProperly()
         QCOMPARE(children[2]->expanded, false);
         QCOMPARE(children[2]->type(), BookmarkNode::Separator);
     }
+    delete root;
 }
 
 
@@ -207,7 +216,7 @@ void tst_Xbel::write_data()
     QTest::newRow("all") << QString("all.xbel");
 }
 
-// public BookmarkNode* read(QString const& fileName)
+// public BookmarkNode *read(QString const &fileName)
 void tst_Xbel::write()
 {
     QFETCH(QString, readFileName);
@@ -223,6 +232,8 @@ void tst_Xbel::write()
     QVERIFY(writer.write(file.fileName(), root));
     BookmarkNode *writtenRoot = reader.read(file.fileName());
     QVERIFY(*writtenRoot == *root);
+    delete root;
+    delete writtenRoot;
 }
 
 QTEST_MAIN(tst_Xbel)

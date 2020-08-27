@@ -8,6 +8,8 @@ include($$PWD/modeltest/modeltest.pri)
 
 HEADERS += qtest_arora.h
 
+DEFINES += AUTOTESTS
+
 INCLUDEPATH += $$PWD
 DEPENDPATH += $$PWD
 

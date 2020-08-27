@@ -15,11 +15,14 @@
         <bookmark href="http://www.bar.com/">
             <title>Title 2</title>
         </bookmark>
+        <bookmark href="http://www.foo.com/">
+            <title>Title&nbsp;3</title>
+        </bookmark>
     </folder>
 
     <folder folded="no">
         <title>Has SubFolder</title>
-	<separator/>
+        <separator/>
         <folder folded="no">
             <title>SubFolder</title>
             <bookmark href="http://www.foo.com">
@@ -30,6 +33,6 @@
                 <title>Title3</title>
             </bookmark>
         </folder>
-	<separator/>
+        <separator/>
     </folder>
 </xbel>

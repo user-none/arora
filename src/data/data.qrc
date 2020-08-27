@@ -1,12 +1,11 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource>
-    <file>addtab.png</file>
-    <file>closetab.png</file>
-    <file>history.png</file>
-    <file>arora-128.png</file>
+    <file>128x128/arora.png</file>
+    <file>128x128/run.png</file>
+    <file>arora.svg</file>
     <file>defaultbookmarks.xbel</file>
-    <file>loading.gif</file>
-    <file>defaulticon.png</file>
+    <file>fetchLinks.js</file>
+    <file>parseForms.js</file>
     <file>../../AUTHORS</file>
     <file>../../LICENSE.GPL2</file>
 </qresource>

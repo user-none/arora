@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+    <ShortName >Yahoo!</ShortName>
+    <Description >Yahoo Web Search</Description>
+    <Url method="get" type="text/html" template="http://search.yahoo.com/search?ei=utf-8&amp;fr=sfp&amp;iscqry=&amp;p={searchTerms}" />
+    <Image width="16" height="16">http://www.yahoo.com/favicon.ico</Image>
+</OpenSearchDescription>

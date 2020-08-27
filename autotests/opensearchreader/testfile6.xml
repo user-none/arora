@@ -1,0 +1,5 @@
+<OpenSearchDescription>
+    <ShortName>Google</ShortName>
+    <Description>Google Web Search</Description>
+    <Url method="get" type="text/html" template="http://www.google.com/search?bar" />
+</OpenSearchDescription>

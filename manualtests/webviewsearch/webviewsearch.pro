@@ -5,5 +5,5 @@ INCLUDEPATH += .
 
 include(../manualtests.pri)
 
-SOURCES += main.cpp
+SOURCES += main_webviewsearch.cpp
 HEADERS +=

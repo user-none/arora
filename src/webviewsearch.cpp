@@ -28,77 +28,17 @@
 
 #include <qdebug.h>
 
-WebViewSearch::WebViewSearch(QWidget *parent)
-    : QWidget(parent)
-    , m_widget(0)
-    , m_webView(0)
-    , m_timeLine(new QTimeLine(150, this))
+WebViewSearch::WebViewSearch(QWebView *webView, QWidget *parent)
+    : SearchBar(parent)
 {
-    initializeSearchWidget();
-
-    // we start off hidden
-    setMaximumHeight(0);
-    m_widget->setGeometry(0, -1 * m_widget->height(),
-                          m_widget->width(), m_widget->height());
-    hide();
-
-    connect(m_timeLine, SIGNAL(frameChanged(int)),
-            this, SLOT(frameChanged(int)));
-
-    new QShortcut(QKeySequence(Qt::Key_Escape), this, SLOT(animateHide()));
-}
-
-void WebViewSearch::initializeSearchWidget()
-{
-    m_widget = new QWidget(this);
-    m_widget->setContentsMargins(0, 0, 0, 0);
-    ui.setupUi(m_widget);
-    ui.previousButton->setText(QChar(9664));
-    ui.nextButton->setText(QChar(9654));
-    ui.searchInfo->setText(QString());
-    connect(ui.nextButton, SIGNAL(clicked()),
-            this, SLOT(findNext()));
-    connect(ui.previousButton, SIGNAL(clicked()),
-            this, SLOT(findPrevious()));
-    connect(ui.searchLineEdit->lineEdit(), SIGNAL(returnPressed()),
-            this, SLOT(findNext()));
-    connect(ui.doneButton, SIGNAL(clicked()),
-            this, SLOT(animateHide()));
-
-    setMinimumWidth(m_widget->minimumWidth());
-    setMaximumWidth(m_widget->maximumWidth());
-    setMinimumHeight(m_widget->minimumHeight());
-}
-
-void WebViewSearch::setWebView(QWebView *webView)
-{
-    m_webView = webView;
-}
-
-QWebView *WebViewSearch::webView() const
-{
-    return m_webView;
-}
-
-void WebViewSearch::clear()
-{
-    ui.searchLineEdit->lineEdit()->setText(QString());
-}
-
-void WebViewSearch::showFind()
-{
-    if (isVisible())
-        return;
-
-    show();
-    ui.searchLineEdit->setFocus();
-    ui.searchLineEdit->lineEdit()->selectAll();
-
-    m_timeLine->setFrameRange(-1 * m_widget->height(), 0);
-    m_timeLine->setDirection(QTimeLine::Forward);
-    disconnect(m_timeLine, SIGNAL(finished()),
-               this, SLOT(hide()));
-    m_timeLine->start();
+    setSearchObject(webView);
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+    ui.highlightAllButton->setVisible(true);
+    connect(ui.highlightAllButton, SIGNAL(toggled(bool)),
+            this, SLOT(highlightAll()));
+    connect(ui.searchLineEdit, SIGNAL(textEdited(const QString &)),
+            this, SLOT(highlightAll()));
+#endif
 }
 
 void WebViewSearch::findNext()
@@ -111,39 +51,30 @@ void WebViewSearch::findPrevious()
     find(QWebPage::FindBackward | QWebPage::FindWrapsAroundDocument);
 }
 
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+void WebViewSearch::highlightAll()
+{
+    webView()->findText(QString(), QWebPage::HighlightAllOccurrences);
+
+    if (ui.highlightAllButton->isChecked())
+        find(QWebPage::HighlightAllOccurrences);
+}
+#endif
+
 void WebViewSearch::find(QWebPage::FindFlags flags)
 {
-    QString searchString = ui.searchLineEdit->lineEdit()->text();
-    if (!m_webView || searchString.isEmpty())
+    QString searchString = ui.searchLineEdit->text();
+    if (!searchObject() || searchString.isEmpty())
         return;
     QString infoString;
-    if (!m_webView->findText(searchString, flags))
+    if (!webView()->findText(searchString, flags))
         infoString = tr("Not Found");
     ui.searchInfo->setText(infoString);
 }
 
-void WebViewSearch::resizeEvent(QResizeEvent *event)
+QWebView *WebViewSearch::webView() const
 {
-    if (event->size().width() != m_widget->width())
-        m_widget->resize(event->size().width(), m_widget->height());
-    QWidget::resizeEvent(event);
-}
-
-void WebViewSearch::animateHide()
-{
-    m_timeLine->setDirection(QTimeLine::Backward);
-    m_timeLine->start();
-    connect(m_timeLine, SIGNAL(finished()), this, SLOT(hide()));
-}
-
-void WebViewSearch::frameChanged(int frame)
-{
-    if (!m_widget)
-        return;
-    m_widget->move(0, frame);
-    int height = qMax(0, m_widget->y() + m_widget->height());
-    setMinimumHeight(height);
-    setMaximumHeight(height);
+    return qobject_cast<QWebView*>(searchObject());
 }
 
 WebViewWithSearch::WebViewWithSearch(WebView *webView, QWidget *parent)
@@ -154,9 +85,9 @@ WebViewWithSearch::WebViewWithSearch(WebView *webView, QWidget *parent)
     QVBoxLayout *layout = new QVBoxLayout;
     layout->setSpacing(0);
     layout->setContentsMargins(0, 0, 0, 0);
-    m_webViewSearch = new WebViewSearch(this);
+    m_webViewSearch = new WebViewSearch(m_webView, this);
     layout->addWidget(m_webViewSearch);
-    m_webViewSearch->setWebView(m_webView);
     layout->addWidget(m_webView);
     setLayout(layout);
 }
+

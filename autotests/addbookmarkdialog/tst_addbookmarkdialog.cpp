@@ -19,9 +19,13 @@
 
 #include <QtTest/QtTest>
 
-#include <bookmarks.h>
-#include <xbel.h>
-#include <browserapplication.h>
+#include "addbookmarkdialog.h"
+#include "bookmarksmanager.h"
+#include "bookmarknode.h"
+#include "browserapplication.h"
+
+#include <qpushbutton.h>
+#include <qabstractitemview.h>
 
 class tst_AddBookmarkDialog : public QObject
 {
@@ -43,8 +47,8 @@ class SubAddBookmarkDialog : public AddBookmarkDialog
 {
 
 public:
-    SubAddBookmarkDialog(const QString &url, const QString &title, QWidget *parent, BookmarksManager *manager)
-        : AddBookmarkDialog(url, title, parent, manager){}
+    SubAddBookmarkDialog(QWidget *parent, BookmarksManager *manager)
+        : AddBookmarkDialog(parent, manager) {}
 
 };
 
@@ -92,7 +96,7 @@ void tst_AddBookmarkDialog::addbookmarkdialog_data()
 
     // select invalid, menu, toolbar, submenu
     QTest::newRow("cancel")     << "url" << "title" << QDialogButtonBox::Cancel << 0 << 0 << -1;
-    QTest::newRow("ok default") << "url" << "title" << QDialogButtonBox::Ok     << 1 << 0 << -1;
+    QTest::newRow("ok default") << "url" << "title" << QDialogButtonBox::Ok     << 0 << 1 << -1;
     QTest::newRow("ok toolbar") << "url" << "title" << QDialogButtonBox::Ok     << 0 << 1 << 0;
     QTest::newRow("ok menu")    << "url" << "title" << QDialogButtonBox::Ok     << 1 << 0 << 1;
 }
@@ -107,14 +111,16 @@ void tst_AddBookmarkDialog::addbookmarkdialog()
     QFETCH(int, select);
 
     BookmarksManager *manager = BrowserApplication::bookmarksManager();
-    qRegisterMetaType<BookmarkNode *>("BookmarkNode *");
+    qRegisterMetaType<BookmarkNode*>("BookmarkNode *");
     QSignalSpy spy(manager, SIGNAL(entryAdded(BookmarkNode *)));
     BookmarkNode *menu = manager->menu();
     BookmarkNode *toolbar = manager->toolbar();
     QCOMPARE(menu->children().count(), 0);
     QCOMPARE(toolbar->children().count(), 0);
 
-    SubAddBookmarkDialog dialog(url, title, 0, manager);
+    SubAddBookmarkDialog dialog(0, manager);
+    dialog.setUrl(url);
+    dialog.setTitle(title);
     QComboBox *combobox = dialog.findChild<QComboBox*>();
     QVERIFY(combobox);
     if (select != -1) {
@@ -136,6 +142,8 @@ void tst_AddBookmarkDialog::addbookmarkdialog()
     if (node) {
         QCOMPARE(node->title, title);
         QCOMPARE(node->url, url);
+        QVERIFY(dialog.addedNode());
+        QVERIFY(*node == *dialog.addedNode());
     }
 }
 

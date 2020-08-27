@@ -20,7 +20,7 @@ To Use the model test do the following:
 
 include(../path/to/dir/modeltest.pri)
 
-2) Then in your source include "modeltest.h" and instantiate ModelTest with your model so the test can live for the lifetime of your model.  For example:
+2) Then in your source include "modeltest.h" and instantiate ModelTest with your model so the test can live for the lifetime of your model.  For example:  
 
 #include <modeltest.h>
 

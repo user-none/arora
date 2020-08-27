@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Benjamin C. Meyer <ben@meyerhome.net>
+ * Copyright 2009 Benjamin C. Meyer <ben@meyerhome.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,6 @@
  */
 
 #include <QtTest/QtTest>
-#include <QtGui/QtGui>
 #include <searchlineedit.h>
 
 class tst_SearchLineEdit : public QObject
@@ -34,25 +33,12 @@ public slots:
 private slots:
     void searchlineedit_data();
     void searchlineedit();
-
-    void inactiveText_data();
-    void inactiveText();
-
-    void menu();
-    void setMenu();
-    void resizeEvent();
 };
 
 // Subclass that exposes the protected functions.
 class SubSearchLineEdit : public SearchLineEdit
 {
-public:
-    void call_paintEvent(QPaintEvent* event)
-        { return SubSearchLineEdit::paintEvent(event); }
-
-    void call_resizeEvent(QResizeEvent* event)
-        { return SubSearchLineEdit::resizeEvent(event); }
-};
+public:};
 
 // This will be called before the first test function is executed.
 // It is only called once.
@@ -83,81 +69,8 @@ void tst_SearchLineEdit::searchlineedit_data()
 void tst_SearchLineEdit::searchlineedit()
 {
     SubSearchLineEdit edit;
-    QCOMPARE(edit.inactiveText(), tr("Search"));
-    edit.setInactiveText(QString());
-    edit.setMenu((QMenu*)0);
-    QVERIFY(edit.menu() != 0);
-}
-
-void tst_SearchLineEdit::inactiveText_data()
-{
-    QTest::addColumn<QString>("inactiveText");
-    QTest::newRow("foo") << QString("foo");
-}
-
-// public QString inactiveText() const
-void tst_SearchLineEdit::inactiveText()
-{
-    QFETCH(QString, inactiveText);
-
-    SubSearchLineEdit edit;
-    edit.setInactiveText(inactiveText);
-    QCOMPARE(edit.inactiveText(), inactiveText);
-}
-
-// public QMenu* menu() const
-void tst_SearchLineEdit::menu()
-{
-    SubSearchLineEdit edit;
-    edit.show();
-    QList<QAbstractButton *> widgets = edit.findChildren<QAbstractButton *>(QString("SearchButton"));
-    QSize oldSize = widgets.at(0)->size();
-    QMenu *menu = edit.menu();
-    QSize newSize = widgets.at(0)->size();
-    QCOMPARE(oldSize.height(), newSize.height());
-    QVERIFY(oldSize.width() != newSize.width());
-
-    QCOMPARE(edit.menu(), menu);
-    oldSize = newSize;
-    newSize = widgets.at(0)->size();
-    QCOMPARE(oldSize.height(), newSize.height());
-    QCOMPARE(oldSize.width(), newSize.width());
-}
-
-// public void setMenu(QMenu* menu)
-void tst_SearchLineEdit::setMenu()
-{
-    SubSearchLineEdit edit;
-    edit.menu();
-
-    QMenu *newMenu = new QMenu(&edit);
-    edit.setMenu(newMenu);
-    QCOMPARE(edit.menu(), newMenu);
-
-    edit.show();
-    QList<QAbstractButton *> widgets = edit.findChildren<QAbstractButton *>(QString("SearchButton"));
-    QSize oldSize = widgets.at(0)->size();
-    edit.setMenu(0);
-    QSize newSize = widgets.at(0)->size();
-    QCOMPARE(oldSize.height(), newSize.height());
-    QVERIFY(oldSize.width() != newSize.width());
-}
-
-// protected void resizeEvent(QResizeEvent* event)
-void tst_SearchLineEdit::resizeEvent()
-{
-    SubSearchLineEdit edit;
-    edit.resize(100, 100);
-
-    QList<QAbstractButton *> widgets = edit.findChildren<QAbstractButton *>(QString("SearchButton"));
-    QSize oldSize = widgets.at(0)->size();
-
-    edit.show();
-    edit.resize(200, 200);
-
-    QSize newSize = widgets.at(0)->size();
-    QVERIFY(oldSize.height() != newSize.height());
-    QVERIFY(oldSize.width() != newSize.width());
+    QVERIFY(edit.clearButton() != 0);
+    QVERIFY(edit.searchButton() != 0);
 }
 
 QTEST_MAIN(tst_SearchLineEdit)

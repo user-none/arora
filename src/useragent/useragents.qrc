@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/useragents" >
+        <file>useragents.xml</file>
+    </qresource>
+</RCC>

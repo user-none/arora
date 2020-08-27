@@ -20,49 +20,31 @@
 #ifndef WEBVIEWSEARCH_H
 #define WEBVIEWSEARCH_H
 
-#include <qwidget.h>
+#include "searchbar.h"
 
 #include <qwebpage.h>
 
-#include "ui_searchbanner.h"
-
 QT_BEGIN_NAMESPACE
-class QTimeLine;
 class QWebView;
 QT_END_NAMESPACE
 
-class WebViewSearch : public QWidget
+class WebViewSearch : public SearchBar
 {
     Q_OBJECT
 
 public:
-    WebViewSearch(QWidget *parent = 0);
-
-    void setWebView(QWebView *webView);
-    QWebView *webView() const;
+    WebViewSearch(QWebView *webView, QWidget *parent = 0);
 
 public slots:
-    void animateHide();
-    void clear();
-    void showFind();
     void findNext();
     void findPrevious();
-
-protected:
-    void resizeEvent(QResizeEvent *event);
-
-private slots:
-    void frameChanged(int frame);
-    void find(QWebPage::FindFlags flags);
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+    void highlightAll();
+#endif
 
 private:
-    void initializeSearchWidget();
-
-    Ui_SearchBanner ui;
-    QWidget *m_widget;
-
-    QWebView *m_webView;
-    QTimeLine *m_timeLine;
+    void find(QWebPage::FindFlags flags);
+    QWebView *webView() const;
 };
 
 #include "webview.h"

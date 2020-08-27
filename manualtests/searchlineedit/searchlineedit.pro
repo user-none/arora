@@ -6,5 +6,9 @@ INCLUDEPATH += .
 include(../manualtests.pri)
 
 # Input
-SOURCES += main.cpp
-HEADERS +=
+RESOURCES =
+FORMS =
+SOURCES = searchbutton.cpp clearbutton.cpp lineedit.cpp searchlineedit.cpp
+HEADERS = searchbutton.h clearbutton.h lineedit.h lineedit_p.h searchlineedit.h
+
+SOURCES += main_searchlineedit.cpp

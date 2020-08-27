@@ -7,5 +7,5 @@ include(../manualtests.pri)
 include(../../autotests/modeltest/modeltest.pri)
 
 # Input
-SOURCES += main.cpp
+SOURCES += main_bookmarks.cpp
 HEADERS +=

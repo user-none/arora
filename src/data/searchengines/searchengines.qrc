@@ -1,0 +1,10 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/searchengines">
+    <file>Google.xml</file>
+    <file>Google_Im_Feeling_Lucky.xml</file>
+    <file>Yahoo.xml</file>
+    <file>Wikipedia_en.xml</file>
+    <file>YouTube.xml</file>
+    <file>Reddit.xml</file>
+</qresource>
+</RCC>

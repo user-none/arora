@@ -123,7 +123,7 @@ void tst_DownloadManager::cleanupButton()
         QProgressBar *bar = manager.findChild<QProgressBar*>();
         QVERIFY(bar);
 
-        QList<QPushButton *>buttons = manager.findChildren<QPushButton*>();
+        QList<QPushButton*>buttons = manager.findChildren<QPushButton*>();
         QPushButton *tryAgainButton = 0;
         for (int i = 0; i < buttons.count(); ++i)
             if (buttons[i]->text().contains("Try"))
@@ -164,7 +164,7 @@ void tst_DownloadManager::download_data()
     QTest::newRow("twofiles") << (QStringList() << BIGFILE << BIGFILE) << (QStringList() << BIGFILENAME << BIGFILENAME2) << 2 << true;
 }
 
-// public void download(QNetworkRequest const& request)
+// public void download(QNetworkRequest const &request)
 void tst_DownloadManager::download()
 {
     QFETCH(QStringList, request);
@@ -181,7 +181,7 @@ void tst_DownloadManager::download()
         for (int i = 0; i < request.count(); ++i)
             manager.download(QUrl(request[i]));
 
-        QList<QPushButton *>buttons = manager.findChildren<QPushButton*>();
+        QList<QPushButton*>buttons = manager.findChildren<QPushButton*>();
         QPushButton *tryAgainButton = 0;
         for (int i = 0; i < buttons.count(); ++i)
             if (buttons[i]->text().contains("Try"))

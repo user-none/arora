@@ -23,12 +23,8 @@
 #include <qdialog.h>
 #include "ui_aboutdialog.h"
 
-class QVBoxLayout;
-class QLabel;
-
 class AboutDialog : public QDialog, private Ui_AboutDialog
 {
-
     Q_OBJECT
 
 public:
@@ -40,7 +36,6 @@ private slots:
 
 private:
     void displayFile(const QString &fileName, const QString &title);
-
 };
 
 #endif // ABOUTDIALOG_H

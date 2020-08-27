@@ -1,6 +1,7 @@
 /*
- * Copyright 2008 Benjamin C. Meyer <ben@meyerhome.net>
+ * Copyright 2008-2009 Benjamin C. Meyer <ben@meyerhome.net>
  * Copyright 2008 Jason A. Donenfeld <Jason@zx2c4.com>
+ * Copyright 2008 Ariya Hidayat <ariya.hidayat@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,27 +65,38 @@
 #include "browsermainwindow.h"
 
 #include "aboutdialog.h"
+#include "adblockmanager.h"
+#include "addbookmarkdialog.h"
 #include "autosaver.h"
-#include "bookmarks.h"
+#include "bookmarksdialog.h"
+#include "bookmarksmanager.h"
+#include "bookmarksmenu.h"
+#include "bookmarksmodel.h"
+#include "bookmarkstoolbar.h"
 #include "browserapplication.h"
 #include "clearprivatedata.h"
 #include "downloadmanager.h"
 #include "history.h"
+#include "languagemanager.h"
+#include "networkaccessmanager.h"
+#include "opensearchdialog.h"
 #include "settings.h"
+#include "sourceviewer.h"
 #include "tabbar.h"
 #include "tabwidget.h"
 #include "toolbarsearch.h"
-#include "ui_passworddialog.h"
+#include "useragentmenu.h"
 #include "webview.h"
 #include "webviewsearch.h"
 
 #include <qdesktopwidget.h>
+#include <qevent.h>
 #include <qfiledialog.h>
-#include <qplaintextedit.h>
 #include <qprintdialog.h>
 #include <qprintpreviewdialog.h>
 #include <qprinter.h>
 #include <qsettings.h>
+#include <qtextcodec.h>
 #include <qmenubar.h>
 #include <qmessagebox.h>
 #include <qstatusbar.h>
@@ -92,6 +104,7 @@
 #include <qinputdialog.h>
 #include <qsplitter.h>
 
+#include <qurl.h>
 #include <qwebframe.h>
 #include <qwebhistory.h>
 
@@ -99,32 +112,66 @@
 
 BrowserMainWindow::BrowserMainWindow(QWidget *parent, Qt::WindowFlags flags)
     : QMainWindow(parent, flags)
+    , m_navigationBar(0)
+    , m_navigationSplitter(0)
+    , m_toolbarSearch(0)
+#if defined(Q_WS_MAC)
+    , m_bookmarksToolbarFrame(0)
+#endif
+    , m_bookmarksToolbar(0)
     , m_tabWidget(new TabWidget(this))
     , m_autoSaver(new AutoSaver(this))
-    , m_historyBack(0)
-    , m_historyForward(0)
-    , m_stop(0)
-    , m_reload(0)
 {
     setAttribute(Qt::WA_DeleteOnClose, true);
     statusBar()->setSizeGripEnabled(true);
+    // fixes https://bugzilla.mozilla.org/show_bug.cgi?id=219070
+    // yes, that's a Firefox bug!
+    statusBar()->setLayoutDirection(Qt::LeftToRight);
     setupMenu();
     setupToolBar();
+
+    m_filePrivateBrowsingAction->setChecked(BrowserApplication::isPrivate());
 
     QWidget *centralWidget = new QWidget(this);
     BookmarksModel *boomarksModel = BrowserApplication::bookmarksManager()->bookmarksModel();
     m_bookmarksToolbar = new BookmarksToolBar(boomarksModel, this);
-    connect(m_bookmarksToolbar, SIGNAL(openUrl(const QUrl&, TabWidget::Tab, const QString&)),
-            m_tabWidget, SLOT(loadUrl(const QUrl&, TabWidget::Tab, const QString&)));
-    connect(m_bookmarksToolbar->toggleViewAction(), SIGNAL(toggled(bool)),
-            this, SLOT(updateBookmarksToolbarActionText(bool)));
+    m_bookmarksToolbar->setObjectName(QLatin1String("BookmarksToolbar"));
+    connect(m_bookmarksToolbar, SIGNAL(openUrl(const QUrl&, const QString&)),
+            m_tabWidget, SLOT(loadUrlFromUser(const QUrl&, const QString&)));
+    connect(m_bookmarksToolbar, SIGNAL(openUrl(const QUrl&, TabWidget::OpenUrlIn, const QString&)),
+            m_tabWidget, SLOT(loadUrl(const QUrl&, TabWidget::OpenUrlIn, const QString&)));
 
     QVBoxLayout *layout = new QVBoxLayout;
     layout->setSpacing(0);
     layout->setMargin(0);
 #if defined(Q_WS_MAC)
+    m_bookmarksToolbarFrame = new QFrame(this);
+    m_bookmarksToolbarFrame->setLineWidth(1);
+    m_bookmarksToolbarFrame->setMidLineWidth(0);
+    m_bookmarksToolbarFrame->setFrameShape(QFrame::HLine);
+    m_bookmarksToolbarFrame->setFrameShadow(QFrame::Raised);
+    QPalette fp = m_bookmarksToolbarFrame->palette();
+    fp.setColor(QPalette::Active, QPalette::Light, QColor(64, 64, 64));
+    fp.setColor(QPalette::Active, QPalette::Dark, QColor(192, 192, 192));
+    fp.setColor(QPalette::Inactive, QPalette::Light, QColor(135, 135, 135));
+    fp.setColor(QPalette::Inactive, QPalette::Dark, QColor(226, 226, 226));
+    m_bookmarksToolbarFrame->setAttribute(Qt::WA_MacNoClickThrough, true);
+    m_bookmarksToolbarFrame->setPalette(fp);
+    layout->addWidget(m_bookmarksToolbarFrame);
+
     layout->addWidget(m_bookmarksToolbar);
-    layout->addWidget(new QWidget); // <- OS X tab widget style bug
+    QPalette p = m_bookmarksToolbar->palette();
+    p.setColor(QPalette::Active, QPalette::Window, QColor(150, 150, 150));
+    p.setColor(QPalette::Inactive, QPalette::Window, QColor(207, 207, 207));
+    m_bookmarksToolbar->setAttribute(Qt::WA_MacNoClickThrough, true);
+    m_bookmarksToolbar->setAutoFillBackground(true);
+    m_bookmarksToolbar->setPalette(p);
+    m_bookmarksToolbar->setBackgroundRole(QPalette::Window);
+    m_bookmarksToolbar->setMaximumHeight(19);
+
+    QWidget *w = new QWidget(this);
+    w->setMaximumHeight(0);
+    layout->addWidget(w); // <- OS X tab widget style bug
 #else
     addToolBarBreak();
     addToolBar(m_bookmarksToolbar);
@@ -133,16 +180,14 @@ BrowserMainWindow::BrowserMainWindow(QWidget *parent, Qt::WindowFlags flags)
     centralWidget->setLayout(layout);
     setCentralWidget(centralWidget);
 
-    connect(m_tabWidget, SIGNAL(loadPage(const QString &)),
-            this, SLOT(loadPage(const QString &)));
     connect(m_tabWidget, SIGNAL(setCurrentTitle(const QString &)),
-            this, SLOT(slotUpdateWindowTitle(const QString &)));
+            this, SLOT(updateWindowTitle(const QString &)));
     connect(m_tabWidget, SIGNAL(showStatusBarMessage(const QString&)),
             statusBar(), SLOT(showMessage(const QString&)));
     connect(m_tabWidget, SIGNAL(linkHovered(const QString&)),
             statusBar(), SLOT(showMessage(const QString&)));
     connect(m_tabWidget, SIGNAL(loadProgress(int)),
-            this, SLOT(slotLoadProgress(int)));
+            this, SLOT(loadProgress(int)));
     connect(m_tabWidget, SIGNAL(tabsChanged()),
             m_autoSaver, SLOT(changeOccurred()));
     connect(m_tabWidget, SIGNAL(geometryChangeRequested(const QRect &)),
@@ -157,26 +202,76 @@ BrowserMainWindow::BrowserMainWindow(QWidget *parent, Qt::WindowFlags flags)
             m_navigationBar, SLOT(setVisible(bool)));
     connect(m_tabWidget, SIGNAL(toolBarVisibilityChangeRequested(bool)),
             m_bookmarksToolbar, SLOT(setVisible(bool)));
-#if defined(Q_WS_MAC)
     connect(m_tabWidget, SIGNAL(lastTabClosed()),
-            this, SLOT(close()));
-#else
-    connect(m_tabWidget, SIGNAL(lastTabClosed()),
-            m_tabWidget, SLOT(newTab()));
-#endif
+            this, SLOT(lastTabClosed()));
 
-    slotUpdateWindowTitle();
+    updateWindowTitle();
     loadDefaultState();
     m_tabWidget->newTab();
+    m_tabWidget->currentLocationBar()->setFocus();
+#if defined(Q_WS_MAC)
+    m_navigationBar->setIconSize(QSize(18, 18));
+#endif
 
-    int size = m_tabWidget->lineEditStack()->sizeHint().height();
-    m_navigationBar->setIconSize(QSize(size, size));
+    // Add each item in the menu bar to the main window so
+    // if the menu bar is hidden the shortcuts still work.
+    QList<QAction*> actions = menuBar()->actions();
+    foreach (QAction *action, actions) {
+        if (action->menu())
+            actions += action->menu()->actions();
+        addAction(action);
+    }
+#if defined(Q_WS_MAC)
+    setWindowIcon(QIcon());
+#endif
+#if defined(Q_WS_X11)
+    setWindowRole(QLatin1String("browser"));
+#endif
+    retranslate();
 }
 
 BrowserMainWindow::~BrowserMainWindow()
 {
     m_autoSaver->changeOccurred();
     m_autoSaver->saveIfNeccessary();
+}
+
+void BrowserMainWindow::keyPressEvent(QKeyEvent *event)
+{
+    switch (event->key()) {
+    case Qt::Key_HomePage:
+        m_historyHomeAction->trigger();
+        event->accept();
+        break;
+    case Qt::Key_Favorites:
+        m_bookmarksShowAllAction->trigger();
+        event->accept();
+        break;
+    case Qt::Key_Search:
+        m_toolsWebSearchAction->trigger();
+        event->accept();
+        break;
+    case Qt::Key_OpenUrl:
+        m_fileOpenLocationAction->trigger();
+        event->accept();
+        break;
+    default:
+        QMainWindow::keyPressEvent(event);
+        break;
+    }
+}
+
+BrowserMainWindow *BrowserMainWindow::parentWindow(QWidget *widget)
+{
+    while (widget) {
+        if (BrowserMainWindow *parent = qobject_cast<BrowserMainWindow*>(widget))
+            return parent;
+
+        widget = widget->parentWidget();
+    }
+
+    qWarning() << "BrowserMainWindow::" << __FUNCTION__ << " used with a widget none of whose parents is a main window.";
+    return BrowserApplication::instance()->mainWindow();
 }
 
 void BrowserMainWindow::loadDefaultState()
@@ -210,16 +305,17 @@ static const qint32 BrowserMainWindowMagic = 0xba;
 
 QByteArray BrowserMainWindow::saveState(bool withTabs) const
 {
-    int version = 2;
+    int version = 3;
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
 
     stream << qint32(BrowserMainWindowMagic);
     stream << qint32(version);
 
-    stream << size();
-    stream << !m_navigationBar->isHidden();
-    stream << !m_bookmarksToolbar->isHidden();
+    // save the normal size so exiting fullscreen/maximize will work reasonably
+    stream << normalGeometry().size();
+    stream << !m_navigationBar->isHidden(); // DEAD
+    stream << !m_bookmarksToolbar->isHidden(); // DEAD
     stream << !statusBar()->isHidden();
     if (withTabs)
         stream << tabWidget()->saveState();
@@ -227,294 +323,736 @@ QByteArray BrowserMainWindow::saveState(bool withTabs) const
         stream << QByteArray();
     stream << m_navigationSplitter->saveState();
     stream << m_tabWidget->tabBar()->showTabBarWhenOneTab();
+
+    stream << qint32(toolBarArea(m_navigationBar));
+    stream << qint32(toolBarArea(m_bookmarksToolbar));
+
+    // version 3
+    stream << isMaximized();
+    stream << isFullScreen();
+    stream << menuBar()->isVisible();
+    stream << m_menuBarVisible; // DEAD
+    stream << m_statusBarVisible;
+
+    stream << QMainWindow::saveState();
+
     return data;
 }
 
 bool BrowserMainWindow::restoreState(const QByteArray &state)
 {
-    int version = 2;
     QByteArray sd = state;
     QDataStream stream(&sd, QIODevice::ReadOnly);
     if (stream.atEnd())
         return false;
 
     qint32 marker;
-    qint32 v;
+    qint32 version;
     stream >> marker;
-    stream >> v;
-    if (marker != BrowserMainWindowMagic || v != version)
+    stream >> version;
+    if (marker != BrowserMainWindowMagic || !(version == 2 || version == 3))
         return false;
 
     QSize size;
-    bool showToolbar;
-    bool showBookmarksBar;
+    bool showToolbarDEAD;
+    bool showBookmarksBarDEAD;
     bool showStatusbar;
     QByteArray tabState;
     QByteArray splitterState;
     bool showTabBarWhenOneTab;
+    qint32 navigationBarLocation;
+    qint32 bookmarkBarLocation;
+    bool maximized;
+    bool fullScreen;
+    bool showMenuBar;
+    QByteArray qMainWindowState;
 
     stream >> size;
-    stream >> showToolbar;
-    stream >> showBookmarksBar;
+    stream >> showToolbarDEAD;
+    stream >> showBookmarksBarDEAD;
     stream >> showStatusbar;
     stream >> tabState;
     stream >> splitterState;
     stream >> showTabBarWhenOneTab;
+    stream >> navigationBarLocation;
+    stream >> bookmarkBarLocation;
 
-    resize(size);
+    if (version >= 3) {
+        stream >> maximized;
+        stream >> fullScreen;
+        stream >> showMenuBar;
+        stream >> showMenuBar; // m_menuBarVisible DEAD
+        stream >> m_statusBarVisible;
+        stream >> qMainWindowState;
+    } else {
+        maximized = false;
+        fullScreen = false;
+        showMenuBar = true;
+        m_statusBarVisible = showStatusbar;
+    }
 
-    m_navigationBar->setVisible(showToolbar);
-    updateToolbarActionText(showToolbar);
+    if (size.isValid())
+        resize(size);
 
-    m_bookmarksToolbar->setVisible(showBookmarksBar);
-    updateBookmarksToolbarActionText(showBookmarksBar);
+    if (maximized)
+        setWindowState(windowState() | Qt::WindowMaximized);
+    if (fullScreen) {
+        setWindowState(windowState() | Qt::WindowFullScreen);
+        m_viewFullScreenAction->setChecked(true);
+    }
+
+    menuBar()->setVisible(showMenuBar);
+    m_menuBarVisible = showMenuBar;
 
     statusBar()->setVisible(showStatusbar);
-    updateStatusbarActionText(showStatusbar);
 
     m_navigationSplitter->restoreState(splitterState);
 
-    if (!tabState.isEmpty() && !tabWidget()->restoreState(tabState))
-        return false;
+    tabWidget()->restoreState(tabState);
 
     m_tabWidget->tabBar()->setShowTabBarWhenOneTab(showTabBarWhenOneTab);
+
+    if (qMainWindowState.isEmpty()) {
+        m_navigationBar->setVisible(showToolbarDEAD);
+        m_bookmarksToolbar->setVisible(showBookmarksBarDEAD);
+        Qt::ToolBarArea navigationArea = Qt::ToolBarArea(navigationBarLocation);
+        if (navigationArea != Qt::TopToolBarArea && navigationArea != Qt::NoToolBarArea)
+            addToolBar(navigationArea, m_navigationBar);
+        Qt::ToolBarArea bookmarkArea = Qt::ToolBarArea(bookmarkBarLocation);
+        if (bookmarkArea != Qt::TopToolBarArea && bookmarkArea != Qt::NoToolBarArea)
+            addToolBar(bookmarkArea, m_bookmarksToolbar);
+    } else {
+        QMainWindow::restoreState(qMainWindowState);
+    }
+
+#if defined(Q_WS_MAC)
+    m_bookmarksToolbarFrame->setVisible(m_bookmarksToolbar->isVisible());
+#endif
 
     return true;
 }
 
+void BrowserMainWindow::lastTabClosed()
+{
+    QSettings settings;
+    settings.beginGroup(QLatin1String("tabs"));
+    bool quit = settings.value(QLatin1String("quitAsLastTabClosed"), true).toBool();
+
+    if (quit)
+        close();
+    else
+        m_tabWidget->makeNewTab(true);
+}
+
+QAction *BrowserMainWindow::showMenuBarAction() const
+{
+    return m_viewShowMenuBarAction;
+}
+
 void BrowserMainWindow::setupMenu()
 {
-    new QShortcut(QKeySequence(Qt::Key_F6), this, SLOT(slotSwapFocus()));
+    m_menuBarVisible = true;
+
+    new QShortcut(QKeySequence(Qt::Key_F6), this, SLOT(swapFocus()));
 
     // File
-    QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
+    m_fileMenu = new QMenu(menuBar());
+    menuBar()->addMenu(m_fileMenu);
 
-    fileMenu->addAction(tr("&New Window"), this, SLOT(slotFileNew()), QKeySequence::New);
-    fileMenu->addAction(m_tabWidget->newTabAction());
-    fileMenu->addAction(tr("&Open File..."), this, SLOT(slotFileOpen()), QKeySequence::Open);
-    fileMenu->addAction(tr("Open &Location..."), this,
-                        SLOT(slotSelectLineEdit()), QKeySequence(Qt::ControlModifier + Qt::Key_L));
-    fileMenu->addSeparator();
-    fileMenu->addAction(m_tabWidget->closeTabAction());
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("&Save As..."), this,
-                        SLOT(slotFileSaveAs()), QKeySequence(QKeySequence::Save));
-    fileMenu->addSeparator();
+    m_fileNewWindowAction = new QAction(m_fileMenu);
+    m_fileNewWindowAction->setShortcut(QKeySequence::New);
+    connect(m_fileNewWindowAction, SIGNAL(triggered()),
+            this, SLOT(fileNew()));
+    m_fileMenu->addAction(m_fileNewWindowAction);
+    m_fileMenu->addAction(m_tabWidget->newTabAction());
+
+    m_fileOpenFileAction = new QAction(m_fileMenu);
+    m_fileOpenFileAction->setShortcut(QKeySequence::Open);
+    connect(m_fileOpenFileAction, SIGNAL(triggered()),
+            this, SLOT(fileOpen()));
+    m_fileMenu->addAction(m_fileOpenFileAction);
+
+    m_fileOpenLocationAction = new QAction(m_fileMenu);
+    // Add the location bar shortcuts familiar to users from other browsers
+    QList<QKeySequence> openLocationShortcuts;
+    openLocationShortcuts.append(QKeySequence(Qt::ControlModifier + Qt::Key_L));
+    openLocationShortcuts.append(QKeySequence(Qt::AltModifier + Qt::Key_O));
+    openLocationShortcuts.append(QKeySequence(Qt::AltModifier + Qt::Key_D));
+    m_fileOpenLocationAction->setShortcuts(openLocationShortcuts);
+    connect(m_fileOpenLocationAction, SIGNAL(triggered()),
+            this, SLOT(selectLineEdit()));
+    m_fileMenu->addAction(m_fileOpenLocationAction);
+
+    m_fileMenu->addSeparator();
+    m_fileMenu->addAction(m_tabWidget->closeTabAction());
+    m_fileMenu->addSeparator();
+
+    m_fileSaveAsAction = new QAction(m_fileMenu);
+    m_fileSaveAsAction->setShortcut(QKeySequence::Save);
+    connect(m_fileSaveAsAction, SIGNAL(triggered()),
+            this, SLOT(fileSaveAs()));
+    m_fileMenu->addAction(m_fileSaveAsAction);
+    m_fileMenu->addSeparator();
+
     BookmarksManager *bookmarksManager = BrowserApplication::bookmarksManager();
-    fileMenu->addAction(tr("&Import Bookmarks..."), bookmarksManager, SLOT(importBookmarks()));
-    fileMenu->addAction(tr("&Export Bookmarks..."), bookmarksManager, SLOT(exportBookmarks()));
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("P&rint Preview..."), this, SLOT(slotFilePrintPreview()));
-    fileMenu->addAction(tr("&Print..."), this, SLOT(slotFilePrint()), QKeySequence::Print);
-    fileMenu->addSeparator();
-    m_privateBrowsing = fileMenu->addAction(tr("Private &Browsing..."), this, SLOT(slotPrivateBrowsing()));
-    m_privateBrowsing->setCheckable(true);
-    fileMenu->addSeparator();
+    m_fileImportBookmarksAction = new QAction(m_fileMenu);
+    connect(m_fileImportBookmarksAction, SIGNAL(triggered()),
+            bookmarksManager, SLOT(importBookmarks()));
+    m_fileMenu->addAction(m_fileImportBookmarksAction);
+    m_fileExportBookmarksAction = new QAction(m_fileMenu);
+    connect(m_fileExportBookmarksAction, SIGNAL(triggered()),
+            bookmarksManager, SLOT(exportBookmarks()));
+    m_fileMenu->addAction(m_fileExportBookmarksAction);
+    m_fileMenu->addSeparator();
 
-#if defined(Q_WS_MAC)
-    fileMenu->addAction(tr("&Quit"), BrowserApplication::instance(), SLOT(quitBrowser()), QKeySequence(Qt::CTRL | Qt::Key_Q));
-#else
-    fileMenu->addAction(tr("&Quit"), this, SLOT(close()), QKeySequence(Qt::CTRL | Qt::Key_Q));
+    m_filePrintPreviewAction= new QAction(m_fileMenu);
+    connect(m_filePrintPreviewAction, SIGNAL(triggered()),
+            this, SLOT(filePrintPreview()));
+    m_fileMenu->addAction(m_filePrintPreviewAction);
+
+    m_filePrintAction = new QAction(m_fileMenu);
+    m_filePrintAction->setShortcut(QKeySequence::Print);
+    connect(m_filePrintAction, SIGNAL(triggered()),
+            this, SLOT(filePrint()));
+    m_fileMenu->addAction(m_filePrintAction);
+    m_fileMenu->addSeparator();
+
+    m_filePrivateBrowsingAction = new QAction(m_fileMenu);
+    connect(m_filePrivateBrowsingAction, SIGNAL(triggered()),
+            this, SLOT(privateBrowsing()));
+    m_filePrivateBrowsingAction->setCheckable(true);
+    m_fileMenu->addAction(m_filePrivateBrowsingAction);
+    m_fileMenu->addSeparator();
+
+    m_fileCloseWindow = new QAction(m_fileMenu);
+    connect(m_fileCloseWindow, SIGNAL(triggered()), this, SLOT(close()));
+    m_fileCloseWindow->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_W));
+    m_fileMenu->addAction(m_fileCloseWindow);
+
+    m_fileQuit = new QAction(m_fileMenu);
+    int kdeSessionVersion = QString::fromLocal8Bit(qgetenv("KDE_SESSION_VERSION")).toInt();
+    if (kdeSessionVersion != 0)
+        connect(m_fileQuit, SIGNAL(triggered()), this, SLOT(close()));
+    else
+        connect(m_fileQuit, SIGNAL(triggered()), BrowserApplication::instance(), SLOT(quitBrowser()));
+    m_fileQuit->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Q));
+    m_fileMenu->addAction(m_fileQuit);
+
+#if QT_VERSION >= 0x040600 && defined(Q_WS_X11)
+    m_fileNewWindowAction->setIcon(QIcon::fromTheme(QLatin1String("window-new")));
+    m_fileOpenFileAction->setIcon(QIcon::fromTheme(QLatin1String("document-open")));
+    m_filePrintPreviewAction->setIcon(QIcon::fromTheme(QLatin1String("document-print-preview")));
+    m_filePrintAction->setIcon(QIcon::fromTheme(QLatin1String("document-print")));
+    m_fileSaveAsAction->setIcon(QIcon::fromTheme(QLatin1String("document-save-as")));
+    m_fileCloseWindow->setIcon(QIcon::fromTheme(QLatin1String("window-close")));
+    m_fileQuit->setIcon(QIcon::fromTheme(QLatin1String("application-exit")));
 #endif
 
     // Edit
-    QMenu *editMenu = menuBar()->addMenu(tr("&Edit"));
-    QAction *m_undo = editMenu->addAction(tr("&Undo"));
-    m_undo->setShortcuts(QKeySequence::Undo);
-    m_tabWidget->addWebAction(m_undo, QWebPage::Undo);
-    QAction *m_redo = editMenu->addAction(tr("&Redo"));
-    m_redo->setShortcuts(QKeySequence::Redo);
-    m_tabWidget->addWebAction(m_redo, QWebPage::Redo);
-    editMenu->addSeparator();
-    QAction *m_cut = editMenu->addAction(tr("Cu&t"));
-    m_cut->setShortcuts(QKeySequence::Cut);
-    m_tabWidget->addWebAction(m_cut, QWebPage::Cut);
-    QAction *m_copy = editMenu->addAction(tr("&Copy"));
-    m_copy->setShortcuts(QKeySequence::Copy);
-    m_tabWidget->addWebAction(m_copy, QWebPage::Copy);
-    QAction *m_paste = editMenu->addAction(tr("&Paste"));
-    m_paste->setShortcuts(QKeySequence::Paste);
-    m_tabWidget->addWebAction(m_paste, QWebPage::Paste);
-    editMenu->addSeparator();
+    m_editMenu = new QMenu(menuBar());
+    menuBar()->addMenu(m_editMenu);
+    m_editUndoAction = new QAction(m_editMenu);
+    m_editUndoAction->setShortcuts(QKeySequence::Undo);
+    m_tabWidget->addWebAction(m_editUndoAction, QWebPage::Undo);
+    m_editMenu->addAction(m_editUndoAction);
+    m_editRedoAction = new QAction(m_editMenu);
+    m_editRedoAction->setShortcuts(QKeySequence::Redo);
+    m_tabWidget->addWebAction(m_editRedoAction, QWebPage::Redo);
+    m_editMenu->addAction(m_editRedoAction);
+    m_editMenu->addSeparator();
+    m_editCutAction = new QAction(m_editMenu);
+    m_editCutAction->setShortcuts(QKeySequence::Cut);
+    m_tabWidget->addWebAction(m_editCutAction, QWebPage::Cut);
+    m_editMenu->addAction(m_editCutAction);
+    m_editCopyAction = new QAction(m_editMenu);
+    m_editCopyAction->setShortcuts(QKeySequence::Copy);
+    m_tabWidget->addWebAction(m_editCopyAction, QWebPage::Copy);
+    m_editMenu->addAction(m_editCopyAction);
+    m_editPasteAction = new QAction(m_editMenu);
+    m_editPasteAction->setShortcuts(QKeySequence::Paste);
+    m_tabWidget->addWebAction(m_editPasteAction, QWebPage::Paste);
+    m_editMenu->addAction(m_editPasteAction);
+    m_editSelectAllAction = new QAction(m_editMenu);
+    m_editSelectAllAction->setShortcuts(QKeySequence::SelectAll);
+    m_tabWidget->addWebAction(m_editSelectAllAction, QWebPage::SelectAll);
+    m_editMenu->addAction(m_editSelectAllAction);
+    m_editMenu->addSeparator();
 
-    QAction *m_find = editMenu->addAction(tr("&Find"));
-    m_find->setShortcuts(QKeySequence::Find);
-    connect(m_find, SIGNAL(triggered()), this, SLOT(slotEditFind()));
-    new QShortcut(QKeySequence(Qt::Key_Slash), this, SLOT(slotEditFind()));
+    m_editFindAction = new QAction(m_editMenu);
+    m_editFindAction->setShortcuts(QKeySequence::Find);
+    connect(m_editFindAction, SIGNAL(triggered()), this, SLOT(editFind()));
+    m_editMenu->addAction(m_editFindAction);
+    new QShortcut(QKeySequence(Qt::Key_Slash), this, SLOT(editFind()));
 
-    QAction *m_findNext = editMenu->addAction(tr("&Find Next"));
-    m_findNext->setShortcuts(QKeySequence::FindNext);
-    connect(m_findNext, SIGNAL(triggered()), this, SLOT(slotEditFindNext()));
+    m_editFindNextAction = new QAction(m_editMenu);
+    m_editFindNextAction->setShortcuts(QKeySequence::FindNext);
+    connect(m_editFindNextAction, SIGNAL(triggered()), this, SLOT(editFindNext()));
+    m_editMenu->addAction(m_editFindNextAction);
 
-    QAction *m_findPrevious = editMenu->addAction(tr("&Find Previous"));
-    m_findPrevious->setShortcuts(QKeySequence::FindPrevious);
-    connect(m_findPrevious, SIGNAL(triggered()), this, SLOT(slotEditFindPrevious()));
+    m_editFindPreviousAction = new QAction(m_editMenu);
+    m_editFindPreviousAction->setShortcuts(QKeySequence::FindPrevious);
+    connect(m_editFindPreviousAction, SIGNAL(triggered()), this, SLOT(editFindPrevious()));
+    m_editMenu->addAction(m_editFindPreviousAction);
 
-    editMenu->addSeparator();
-    editMenu->addAction(tr("&Preferences"), this, SLOT(slotPreferences()), tr("Ctrl+,"));
+#if QT_VERSION >= 0x040600 && defined(Q_WS_X11)
+    m_editUndoAction->setIcon(QIcon::fromTheme(QLatin1String("edit-undo")));
+    m_editRedoAction->setIcon(QIcon::fromTheme(QLatin1String("edit-redo")));
+    m_editCutAction->setIcon(QIcon::fromTheme(QLatin1String("edit-cut")));
+    m_editCopyAction->setIcon(QIcon::fromTheme(QLatin1String("edit-copy")));
+    m_editPasteAction->setIcon(QIcon::fromTheme(QLatin1String("edit-paste")));
+    m_editSelectAllAction->setIcon(QIcon::fromTheme(QLatin1String("edit-select-all")));
+    m_editFindAction->setIcon(QIcon::fromTheme(QLatin1String("edit-find")));
+#endif
 
     // View
-    QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
-    new QShortcut(QKeySequence("Ctrl+m"), this, SLOT(slotViewMenuBar()));
+    m_viewMenu = new QMenu(menuBar());
+    connect(m_viewMenu, SIGNAL(aboutToShow()),
+            this, SLOT(aboutToShowViewMenu()));
+    menuBar()->addMenu(m_viewMenu);
 
-    m_viewToolbar = new QAction(this);
-    updateToolbarActionText(true);
-    m_viewToolbar->setShortcut(tr("Ctrl+|"));
-    connect(m_viewToolbar, SIGNAL(triggered()), this, SLOT(slotViewToolbar()));
-    viewMenu->addAction(m_viewToolbar);
+    m_viewShowMenuBarAction = new QAction(m_viewMenu);
+    m_viewShowMenuBarAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_M));
+    connect(m_viewShowMenuBarAction, SIGNAL(triggered()), this, SLOT(viewMenuBar()));
+    addAction(m_viewShowMenuBarAction);
 
-    m_viewBookmarkBar = new QAction(this);
-    updateBookmarksToolbarActionText(true);
-    m_viewBookmarkBar->setShortcut(tr("Shift+Ctrl+B"));
-    connect(m_viewBookmarkBar, SIGNAL(triggered()), this, SLOT(slotViewBookmarksBar()));
-    viewMenu->addAction(m_viewBookmarkBar);
+    m_viewToolbarAction = new QAction(this);
+    connect(m_viewToolbarAction, SIGNAL(triggered()), this, SLOT(viewToolbar()));
+    m_viewMenu->addAction(m_viewToolbarAction);
+
+    m_viewBookmarkBarAction = new QAction(m_viewMenu);
+    connect(m_viewBookmarkBarAction, SIGNAL(triggered()), this, SLOT(viewBookmarksBar()));
+    m_viewMenu->addAction(m_viewBookmarkBarAction);
 
     QAction *viewTabBarAction = m_tabWidget->tabBar()->viewTabBarAction();
-    viewMenu->addAction(viewTabBarAction);
-    connect(viewTabBarAction, SIGNAL(changed()),
+    m_viewMenu->addAction(viewTabBarAction);
+    connect(viewTabBarAction, SIGNAL(toggled(bool)),
             m_autoSaver, SLOT(changeOccurred()));
 
-    m_viewStatusbar = new QAction(this);
-    updateStatusbarActionText(true);
-    m_viewStatusbar->setShortcut(tr("Ctrl+/"));
-    connect(m_viewStatusbar, SIGNAL(triggered()), this, SLOT(slotViewStatusbar()));
-    viewMenu->addAction(m_viewStatusbar);
+    m_viewStatusbarAction = new QAction(m_viewMenu);
+    connect(m_viewStatusbarAction, SIGNAL(triggered()), this, SLOT(viewStatusbar()));
+    m_viewMenu->addAction(m_viewStatusbarAction);
 
-    viewMenu->addSeparator();
+    m_viewMenu->addSeparator();
 
-    m_stop = viewMenu->addAction(tr("&Stop"));
+    m_viewStopAction = new QAction(m_viewMenu);
     QList<QKeySequence> shortcuts;
     shortcuts.append(QKeySequence(Qt::CTRL | Qt::Key_Period));
     shortcuts.append(Qt::Key_Escape);
-    m_stop->setShortcuts(shortcuts);
-    m_tabWidget->addWebAction(m_stop, QWebPage::Stop);
+    m_viewStopAction->setShortcuts(shortcuts);
+    m_tabWidget->addWebAction(m_viewStopAction, QWebPage::Stop);
+    m_viewMenu->addAction(m_viewStopAction);
 
-    m_reload = viewMenu->addAction(tr("Reload Page"));
-    m_reload->setShortcuts(QKeySequence::Refresh);
-    m_tabWidget->addWebAction(m_reload, QWebPage::Reload);
+    m_viewReloadAction = new QAction(m_viewMenu);
+    shortcuts.clear();
+    shortcuts.append(QKeySequence(Qt::CTRL | Qt::Key_R));
+    shortcuts.append(QKeySequence(Qt::Key_F5));
+    m_viewReloadAction->setShortcuts(shortcuts);
+    m_tabWidget->addWebAction(m_viewReloadAction, QWebPage::Reload);
+    m_viewMenu->addAction(m_viewReloadAction);
 
-    viewMenu->addAction(tr("&Make Text Bigger"), this, SLOT(slotViewTextBigger()), QKeySequence(Qt::CTRL | Qt::Key_Plus));
-    viewMenu->addAction(tr("&Make Text Normal"), this, SLOT(slotViewTextNormal()), QKeySequence(Qt::CTRL | Qt::Key_0));
-    viewMenu->addAction(tr("&Make Text Smaller"), this, SLOT(slotViewTextSmaller()), QKeySequence(Qt::CTRL | Qt::Key_Minus));
+    m_viewZoomInAction = new QAction(m_viewMenu);
+    shortcuts.clear();
+    shortcuts.append(QKeySequence(Qt::CTRL | Qt::Key_Plus));
+    shortcuts.append(QKeySequence(Qt::CTRL | Qt::Key_Equal));
+    m_viewZoomInAction->setShortcuts(shortcuts);
+    connect(m_viewZoomInAction, SIGNAL(triggered()),
+            this, SLOT(zoomIn()));
+    m_viewMenu->addAction(m_viewZoomInAction);
 
-    viewMenu->addSeparator();
-    viewMenu->addAction(tr("Page S&ource"), this, SLOT(slotViewPageSource()), tr("Ctrl+Alt+U"));
-    QAction *a = viewMenu->addAction(tr("&Full Screen"), this, SLOT(slotViewFullScreen(bool)),  Qt::Key_F11);
-    a->setCheckable(true);
+    m_viewZoomNormalAction = new QAction(m_viewMenu);
+    m_viewZoomNormalAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+    connect(m_viewZoomNormalAction, SIGNAL(triggered()),
+            this, SLOT(zoomNormal()));
+    m_viewMenu->addAction(m_viewZoomNormalAction);
 
-    // History
-    HistoryMenu *historyMenu = new HistoryMenu(this);
-    connect(historyMenu, SIGNAL(openUrl(const QUrl&)),
-            m_tabWidget, SLOT(loadUrl(const QUrl&)));
-    historyMenu->setTitle(tr("Hi&story"));
-    menuBar()->addMenu(historyMenu);
-    QList<QAction*> historyActions;
+    m_viewZoomOutAction = new QAction(m_viewMenu);
+    shortcuts.clear();
+    shortcuts.append(QKeySequence(Qt::CTRL | Qt::Key_Minus));
+    shortcuts.append(QKeySequence(Qt::CTRL | Qt::Key_Underscore));
+    m_viewZoomOutAction->setShortcuts(shortcuts);
+    connect(m_viewZoomOutAction, SIGNAL(triggered()),
+            this, SLOT(zoomOut()));
+    m_viewMenu->addAction(m_viewZoomOutAction);
 
-    m_historyBack = new QAction(tr("Back"), this);
-    m_tabWidget->addWebAction(m_historyBack, QWebPage::Back);
-    m_historyBack->setShortcuts(QKeySequence::Back);
-    m_historyBack->setIconVisibleInMenu(false);
+    m_viewZoomTextOnlyAction = new QAction(m_viewMenu);
+    m_viewZoomTextOnlyAction->setCheckable(true);
+    connect(m_viewZoomTextOnlyAction, SIGNAL(toggled(bool)),
+            BrowserApplication::instance(), SLOT(setZoomTextOnly(bool)));
+    connect(BrowserApplication::instance(), SIGNAL(zoomTextOnlyChanged(bool)),
+            this, SLOT(zoomTextOnlyChanged(bool)));
+    m_viewMenu->addAction(m_viewZoomTextOnlyAction);
 
-    m_historyForward = new QAction(tr("Forward"), this);
-    m_tabWidget->addWebAction(m_historyForward, QWebPage::Forward);
-    m_historyForward->setShortcuts(QKeySequence::Forward);
-    m_historyForward->setIconVisibleInMenu(false);
+    m_viewFullScreenAction = new QAction(m_viewMenu);
+    m_viewFullScreenAction->setShortcut(Qt::Key_F11);
+    connect(m_viewFullScreenAction, SIGNAL(triggered(bool)),
+            this, SLOT(viewFullScreen(bool)));
+    m_viewFullScreenAction->setCheckable(true);
+    m_viewMenu->addAction(m_viewFullScreenAction);
 
-    QAction *m_historyHome = new QAction(tr("Home"), this);
-    connect(m_historyHome, SIGNAL(triggered()), this, SLOT(slotHome()));
-    m_historyHome->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H));
 
-    m_restoreLastSession = new QAction(tr("Restore Last Session"), this);
-    connect(m_restoreLastSession, SIGNAL(triggered()), BrowserApplication::instance(), SLOT(restoreLastSession()));
-    m_restoreLastSession->setEnabled(BrowserApplication::instance()->canRestoreSession());
+    m_viewMenu->addSeparator();
 
-    historyActions.append(m_historyBack);
-    historyActions.append(m_historyForward);
-    historyActions.append(m_historyHome);
-    historyActions.append(m_tabWidget->recentlyClosedTabsAction());
-    historyActions.append(m_restoreLastSession);
-    historyMenu->setInitialActions(historyActions);
+    m_viewSourceAction = new QAction(m_viewMenu);
+    connect(m_viewSourceAction, SIGNAL(triggered()),
+            this, SLOT(viewPageSource()));
+    m_viewMenu->addAction(m_viewSourceAction);
 
-    // Bookmarks
-    BookmarksMenu *bookmarksMenu = new BookmarksMenu(this);
-    connect(bookmarksMenu, SIGNAL(openUrl(const QUrl&, TabWidget::Tab, const QString &)),
-            m_tabWidget, SLOT(loadUrl(const QUrl&, TabWidget::Tab, const QString&)));
-    bookmarksMenu->setTitle(tr("&Bookmarks"));
-    menuBar()->addMenu(bookmarksMenu);
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+    m_viewMenu->addSeparator();
 
-    QList<QAction*> bookmarksActions;
-
-    QAction *showAllBookmarksAction = new QAction(tr("Manage Bookmarks..."), this);
-    connect(showAllBookmarksAction, SIGNAL(triggered()), this, SLOT(slotShowBookmarksDialog()));
-    m_addBookmark = new QAction(QIcon(QLatin1String(":addbookmark.png")), tr("Add Bookmark..."), this);
-    m_addBookmark->setIconVisibleInMenu(false);
-
-    connect(m_addBookmark, SIGNAL(triggered()), this, SLOT(slotAddBookmark()));
-    m_addBookmark->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
-
-    bookmarksActions.append(showAllBookmarksAction);
-    bookmarksActions.append(m_addBookmark);
-    bookmarksMenu->setInitialActions(bookmarksActions);
-
-    // Window
-    m_windowMenu = menuBar()->addMenu(tr("&Window"));
-    connect(m_windowMenu, SIGNAL(aboutToShow()),
-            this, SLOT(slotAboutToShowWindowMenu()));
-    slotAboutToShowWindowMenu();
-
-    QMenu *toolsMenu = menuBar()->addMenu(tr("&Tools"));
-    toolsMenu->addAction(tr("Web &Search"), this, SLOT(slotWebSearch()),
-                         QKeySequence(tr("Ctrl+K", "Web Search")));
-    toolsMenu->addAction(tr("&Clear Private Data"), this, SLOT(slotClearPrivateData()),
-                         QKeySequence(tr("Ctrl+Shift+Delete", "Clear Private Data")));
-#ifndef Q_CC_MINGW
-    a = toolsMenu->addAction(tr("Enable Web &Inspector"), this, SLOT(slotToggleInspector(bool)));
-    a->setCheckable(true);
+    m_viewTextEncodingAction = new QAction(m_viewMenu);
+    m_viewMenu->addAction(m_viewTextEncodingAction);
+    m_viewTextEncodingMenu = new QMenu(m_viewMenu);
+    m_viewTextEncodingAction->setMenu(m_viewTextEncodingMenu);
+    connect(m_viewTextEncodingMenu, SIGNAL(aboutToShow()),
+            this, SLOT(aboutToShowTextEncodingMenu()));
+    connect(m_viewTextEncodingMenu, SIGNAL(triggered(QAction *)),
+            this, SLOT(viewTextEncoding(QAction *)));
 #endif
 
-    QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
-    helpMenu->addAction(tr("About &Qt"), qApp, SLOT(aboutQt()));
-    helpMenu->addAction(tr("About &Arora"), this, SLOT(slotAboutApplication()));
+    m_stopIcon = style()->standardIcon(QStyle::SP_BrowserStop);
+    m_reloadIcon = style()->standardIcon(QStyle::SP_BrowserReload);
+#if QT_VERSION >= 0x040600 && defined(Q_WS_X11)
+    m_viewStopAction->setIcon(m_stopIcon);
+    m_viewReloadAction->setIcon(m_reloadIcon);
+    m_viewZoomInAction->setIcon(QIcon::fromTheme(QLatin1String("zoom-in")));
+    m_viewZoomNormalAction->setIcon(QIcon::fromTheme(QLatin1String("zoom-original")));
+    m_viewZoomOutAction->setIcon(QIcon::fromTheme(QLatin1String("zoom-out")));
+    m_viewFullScreenAction->setIcon(QIcon::fromTheme(QLatin1String("view-fullscreen")));
+#endif
+
+    // History
+    m_historyMenu = new HistoryMenu(this);
+    connect(m_historyMenu, SIGNAL(openUrl(const QUrl&, const QString&)),
+            m_tabWidget, SLOT(loadUrlFromUser(const QUrl&, const QString&)));
+    menuBar()->addMenu(m_historyMenu);
+    QList<QAction*> historyActions;
+
+    m_historyBackAction = new QAction(this);
+    m_tabWidget->addWebAction(m_historyBackAction, QWebPage::Back);
+    m_historyBackAction->setShortcuts(QKeySequence::Back);
+#if QT_VERSION < 0x040600 || (QT_VERSION >= 0x040600 && !defined(Q_WS_X11))
+    m_historyBackAction->setIconVisibleInMenu(false);
+#endif
+
+    m_historyForwardAction = new QAction(this);
+    m_tabWidget->addWebAction(m_historyForwardAction, QWebPage::Forward);
+    m_historyForwardAction->setShortcuts(QKeySequence::Forward);
+#if QT_VERSION < 0x040600 || (QT_VERSION >= 0x040600 && !defined(Q_WS_X11))
+    m_historyForwardAction->setIconVisibleInMenu(false);
+#endif
+
+    m_historyHomeAction = new QAction(this);
+    connect(m_historyHomeAction, SIGNAL(triggered()), this, SLOT(goHome()));
+    m_historyHomeAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H));
+
+    m_historyRestoreLastSessionAction = new QAction(this);
+    connect(m_historyRestoreLastSessionAction, SIGNAL(triggered()),
+            BrowserApplication::instance(), SLOT(restoreLastSession()));
+    m_historyRestoreLastSessionAction->setEnabled(BrowserApplication::instance()->canRestoreSession());
+
+    historyActions.append(m_historyBackAction);
+    historyActions.append(m_historyForwardAction);
+    historyActions.append(m_historyHomeAction);
+    historyActions.append(m_tabWidget->recentlyClosedTabsAction());
+    historyActions.append(m_historyRestoreLastSessionAction);
+    m_historyMenu->setInitialActions(historyActions);
+#if QT_VERSION >= 0x040600 && defined(Q_WS_X11)
+    m_historyRestoreLastSessionAction->setIcon(QIcon::fromTheme(QLatin1String("document-revert")));
+    m_historyHomeAction->setIcon(QIcon::fromTheme(QLatin1String("go-home")));
+#endif
+
+    // Bookmarks
+    m_bookmarksMenu = new BookmarksMenuBarMenu(this);
+    connect(m_bookmarksMenu, SIGNAL(openUrl(const QUrl&, const QString &)),
+            m_tabWidget, SLOT(loadUrlFromUser(const QUrl&, const QString&)));
+    connect(m_bookmarksMenu, SIGNAL(openUrl(const QUrl&, TabWidget::OpenUrlIn, const QString&)),
+            m_tabWidget, SLOT(loadUrl(const QUrl&, TabWidget::OpenUrlIn, const QString&)));
+    menuBar()->addMenu(m_bookmarksMenu);
+
+    m_bookmarksShowAllAction = new QAction(this);
+    m_bookmarksShowAllAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B));
+    connect(m_bookmarksShowAllAction, SIGNAL(triggered()),
+            this, SLOT(showBookmarksDialog()));
+
+    m_bookmarksAddAction = new QAction(this);
+    m_bookmarksAddAction->setIcon(QIcon(QLatin1String(":addbookmark.png")));
+#if QT_VERSION < 0x040600 || (QT_VERSION >= 0x040600 && !defined(Q_WS_X11))
+    m_bookmarksAddAction->setIconVisibleInMenu(false);
+#endif
+    connect(m_bookmarksAddAction, SIGNAL(triggered()),
+            this, SLOT(addBookmark()));
+    m_bookmarksAddAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+
+    m_bookmarksAddFolderAction = new QAction(this);
+    connect(m_bookmarksAddFolderAction, SIGNAL(triggered()),
+            this, SLOT(addBookmarkFolder()));
+
+    QList<QAction*> bookmarksActions;
+    bookmarksActions.append(m_bookmarksShowAllAction);
+    bookmarksActions.append(m_bookmarksAddAction);
+    bookmarksActions.append(tabWidget()->bookmarkTabsAction());
+    bookmarksActions.append(m_bookmarksAddFolderAction);
+    m_bookmarksMenu->setInitialActions(bookmarksActions);
+
+#if QT_VERSION >= 0x040600
+    m_bookmarksAddFolderAction->setIcon(QIcon::fromTheme(QLatin1String("folder-new")));
+    m_bookmarksShowAllAction->setIcon(QIcon::fromTheme(QLatin1String("user-bookmarks")));
+#endif
+
+    // Window
+    m_windowMenu = new QMenu(menuBar());
+    menuBar()->addMenu(m_windowMenu);
+    connect(m_windowMenu, SIGNAL(aboutToShow()),
+            this, SLOT(aboutToShowWindowMenu()));
+    aboutToShowWindowMenu();
+
+    // Tools
+    m_toolsMenu = new QMenu(menuBar());
+    menuBar()->addMenu(m_toolsMenu);
+
+    m_toolsWebSearchAction = new QAction(m_toolsMenu);
+    connect(m_toolsWebSearchAction, SIGNAL(triggered()),
+            this, SLOT(webSearch()));
+    m_toolsMenu->addAction(m_toolsWebSearchAction);
+
+    m_toolsClearPrivateDataAction = new QAction(m_toolsMenu);
+    connect(m_toolsClearPrivateDataAction, SIGNAL(triggered()),
+            this, SLOT(clearPrivateData()));
+    m_toolsMenu->addAction(m_toolsClearPrivateDataAction);
+
+    m_toolsEnableInspectorAction = new QAction(m_toolsMenu);
+    connect(m_toolsEnableInspectorAction, SIGNAL(triggered(bool)),
+            this, SLOT(toggleInspector(bool)));
+    m_toolsEnableInspectorAction->setCheckable(true);
+    QSettings settings;
+    settings.beginGroup(QLatin1String("websettings"));
+    m_toolsEnableInspectorAction->setChecked(settings.value(QLatin1String("enableInspector"), false).toBool());
+    m_toolsMenu->addAction(m_toolsEnableInspectorAction);
+
+    m_toolsSearchManagerAction = new QAction(m_toolsMenu);
+    m_toolsSearchManagerAction->setMenuRole(QAction::NoRole);
+    connect(m_toolsSearchManagerAction, SIGNAL(triggered()),
+            this, SLOT(showSearchDialog()));
+    m_toolsMenu->addAction(m_toolsSearchManagerAction);
+
+    m_toolsUserAgentMenu = new UserAgentMenu(m_toolsMenu);
+    m_toolsMenu->addMenu(m_toolsUserAgentMenu);
+
+    m_adBlockDialogAction = new QAction(m_toolsMenu);
+    connect(m_adBlockDialogAction, SIGNAL(triggered()),
+            AdBlockManager::instance(), SLOT(showDialog()));
+    m_toolsMenu->addAction(m_adBlockDialogAction);
+
+    m_toolsMenu->addSeparator();
+    m_toolsPreferencesAction = new QAction(m_toolsMenu);
+    m_toolsPreferencesAction->setMenuRole(QAction::PreferencesRole);
+    connect(m_toolsPreferencesAction, SIGNAL(triggered()),
+            this, SLOT(preferences()));
+    m_toolsMenu->addAction(m_toolsPreferencesAction);
+
+    // Help
+    m_helpMenu = new QMenu(menuBar());
+    menuBar()->addMenu(m_helpMenu);
+
+    m_helpChangeLanguageAction = new QAction(m_helpMenu);
+    connect(m_helpChangeLanguageAction, SIGNAL(triggered()),
+            BrowserApplication::languageManager(), SLOT(chooseNewLanguage()));
+    m_helpMenu->addAction(m_helpChangeLanguageAction);
+    m_helpMenu->addSeparator();
+
+    m_helpAboutQtAction = new QAction(m_helpMenu);
+    connect(m_helpAboutQtAction, SIGNAL(triggered()),
+            qApp, SLOT(aboutQt()));
+    m_helpMenu->addAction(m_helpAboutQtAction);
+
+    m_helpAboutApplicationAction = new QAction(m_helpMenu);
+    connect(m_helpAboutApplicationAction, SIGNAL(triggered()),
+            this, SLOT(aboutApplication()));
+    m_helpMenu->addAction(m_helpAboutApplicationAction);
+
+#if QT_VERSION >= 0x040600 && defined(Q_WS_X11)
+    m_helpChangeLanguageAction->setIcon(QIcon::fromTheme(QLatin1String("preferences-desktop-locale")));
+    m_helpAboutQtAction->setIcon(QPixmap(QLatin1String(":/trolltech/qmessagebox/images/qtlogo-64.png")));
+    m_helpAboutApplicationAction->setIcon(windowIcon());
+#endif
+}
+
+void BrowserMainWindow::aboutToShowViewMenu()
+{
+    m_viewToolbarAction->setText(m_navigationBar->isVisible() ? tr("Hide Toolbar") : tr("Show Toolbar"));
+    m_viewBookmarkBarAction->setText(m_bookmarksToolbar->isVisible() ? tr("Hide Bookmarks Bar") : tr("Show Bookmarks Bar"));
+    m_viewStatusbarAction->setText(statusBar()->isVisible() ? tr("Hide Status Bar") : tr("Show Status Bar"));
+}
+
+void BrowserMainWindow::aboutToShowTextEncodingMenu()
+{
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+    m_viewTextEncodingMenu->clear();
+
+    int currentCodec = -1;
+    QStringList codecs;
+    QList<int> mibs = QTextCodec::availableMibs();
+    foreach (const int &mib, mibs) {
+        QString codec = QLatin1String(QTextCodec::codecForMib(mib)->name());
+        codecs.append(codec);
+    }
+    codecs.sort();
+
+    QString defaultTextEncoding = QWebSettings::globalSettings()->defaultTextEncoding();
+    currentCodec = codecs.indexOf(defaultTextEncoding);
+
+    QAction *defaultEncoding = m_viewTextEncodingMenu->addAction(tr("Default"));
+    defaultEncoding->setData(QString());
+    defaultEncoding->setCheckable(true);
+    if (currentCodec == -1)
+        defaultEncoding->setChecked(true);
+    m_viewTextEncodingMenu->addSeparator();
+
+    for (int i = 0; i < codecs.count(); ++i) {
+        const QString &codec = codecs.at(i);
+        QAction *action = m_viewTextEncodingMenu->addAction(codec);
+        action->setData(codec);
+        action->setCheckable(true);
+        if (currentCodec == i)
+            action->setChecked(true);
+    }
+#endif
+}
+
+void BrowserMainWindow::viewTextEncoding(QAction *action)
+{
+    Q_UNUSED(action);
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+    Q_ASSERT(action);
+    QString codec = action->data().toString();
+    if (codec.isEmpty())
+        QWebSettings::globalSettings()->setDefaultTextEncoding(QString());
+    else
+        QWebSettings::globalSettings()->setDefaultTextEncoding(codec);
+#endif
+}
+
+void BrowserMainWindow::retranslate()
+{
+    m_fileMenu->setTitle(tr("&File"));
+    m_fileNewWindowAction->setText(tr("&New Window"));
+    m_fileOpenFileAction->setText(tr("&Open File..."));
+    m_fileOpenLocationAction->setText(tr("Open &Location..."));
+    m_fileSaveAsAction->setText(tr("&Save As..."));
+    m_fileImportBookmarksAction->setText(tr("&Import Bookmarks..."));
+    m_fileExportBookmarksAction->setText(tr("&Export Bookmarks..."));
+    m_filePrintPreviewAction->setText(tr("P&rint Preview..."));
+    m_filePrintAction->setText(tr("&Print..."));
+    m_filePrivateBrowsingAction->setText(tr("Private &Browsing..."));
+    m_fileCloseWindow->setText(tr("Close Window"));
+    m_fileQuit->setText(tr("&Quit"));
+
+    m_editMenu->setTitle(tr("&Edit"));
+    m_editUndoAction->setText(tr("&Undo"));
+    m_editRedoAction->setText(tr("&Redo"));
+    m_editCutAction->setText(tr("Cu&t"));
+    m_editCopyAction->setText(tr("&Copy"));
+    m_editPasteAction->setText(tr("&Paste"));
+    m_editSelectAllAction->setText(tr("Select &All"));
+    m_editFindAction->setText(tr("&Find"));
+    m_editFindNextAction->setText(tr("Find Nex&t"));
+    m_editFindPreviousAction->setText(tr("Find P&revious"));
+
+    m_viewMenu->setTitle(tr("&View"));
+    m_viewToolbarAction->setShortcut(tr("Ctrl+|"));
+    m_viewBookmarkBarAction->setShortcut(tr("Alt+Ctrl+B"));
+    m_viewStatusbarAction->setShortcut(tr("Ctrl+/"));
+    m_viewShowMenuBarAction->setText(tr("Show Menu Bar"));
+    m_viewReloadAction->setText(tr("&Reload Page"));
+    m_viewStopAction->setText(tr("&Stop"));
+    m_viewZoomInAction->setText(tr("Zoom &In"));
+    m_viewZoomNormalAction->setText(tr("Zoom &Normal"));
+    m_viewZoomOutAction->setText(tr("Zoom &Out"));
+    m_viewZoomTextOnlyAction->setText(tr("Zoom &Text Only"));
+    m_viewSourceAction->setText(tr("Page S&ource"));
+    m_viewSourceAction->setShortcut(tr("Ctrl+Alt+U"));
+    m_viewFullScreenAction->setText(tr("&Full Screen"));
+#if QT_VERSION >= 0x040600 || defined(WEBKIT_TRUNK)
+    m_viewTextEncodingAction->setText(tr("Text Encoding"));
+#endif
+
+    m_historyMenu->setTitle(tr("Hi&story"));
+    m_historyBackAction->setText(tr("Back"));
+    m_historyForwardAction->setText(tr("Forward"));
+    m_historyHomeAction->setText(tr("Home"));
+    m_historyRestoreLastSessionAction->setText(tr("Restore Last Session"));
+
+    m_bookmarksMenu->setTitle(tr("&Bookmarks"));
+    m_bookmarksShowAllAction->setText(tr("Show All Bookmarks..."));
+    m_bookmarksAddAction->setText(tr("Add Bookmark..."));
+    m_bookmarksAddFolderAction->setText(tr("Add Folder..."));
+
+    m_windowMenu->setTitle(tr("&Window"));
+
+    m_toolsMenu->setTitle(tr("&Tools"));
+    m_toolsWebSearchAction->setText(tr("Web &Search"));
+    m_toolsWebSearchAction->setShortcut(QKeySequence(tr("Ctrl+K", "Web Search")));
+    m_toolsClearPrivateDataAction->setText(tr("&Clear Private Data"));
+    m_toolsClearPrivateDataAction->setShortcut(QKeySequence(tr("Ctrl+Shift+Delete", "Clear Private Data")));
+    m_toolsEnableInspectorAction->setText(tr("Enable Web &Inspector"));
+    m_toolsPreferencesAction->setText(tr("Options..."));
+    m_toolsPreferencesAction->setShortcut(tr("Ctrl+,"));
+    m_toolsSearchManagerAction->setText(tr("Configure Search Engines..."));
+    m_toolsUserAgentMenu->setTitle(tr("User Agent"));
+    m_adBlockDialogAction->setText(tr("&Ad Block..."));
+
+    m_helpMenu->setTitle(tr("&Help"));
+    m_helpChangeLanguageAction->setText(tr("Switch application language "));
+    m_helpAboutQtAction->setText(tr("About &Qt"));
+    m_helpAboutApplicationAction->setText(tr("About &%1", "About Browser").arg(QApplication::applicationName()));
+
+    // Toolbar
+    m_navigationBar->setWindowTitle(tr("Navigation"));
+    m_bookmarksToolbar->setWindowTitle(tr("&Bookmarks"));
+
+    m_stopReloadAction->setText(tr("Reload / Stop"));
+    updateStopReloadActionText(false);
 }
 
 void BrowserMainWindow::setupToolBar()
 {
     setUnifiedTitleAndToolBarOnMac(true);
-    m_navigationBar = addToolBar(tr("Navigation"));
-    connect(m_navigationBar->toggleViewAction(), SIGNAL(toggled(bool)),
-            this, SLOT(updateToolbarActionText(bool)));
+    m_navigationBar = new QToolBar(this);
+    m_navigationBar->setObjectName(QLatin1String("NavigationToolBar"));
+    addToolBar(m_navigationBar);
 
-    m_historyBack->setIcon(style()->standardIcon(QStyle::SP_ArrowBack, 0, this));
+    m_historyBackAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack, 0, this));
     m_historyBackMenu = new QMenu(this);
-    m_historyBack->setMenu(m_historyBackMenu);
+    m_historyBackAction->setMenu(m_historyBackMenu);
     connect(m_historyBackMenu, SIGNAL(aboutToShow()),
-            this, SLOT(slotAboutToShowBackMenu()));
+            this, SLOT(aboutToShowBackMenu()));
     connect(m_historyBackMenu, SIGNAL(triggered(QAction *)),
-            this, SLOT(slotOpenActionUrl(QAction *)));
-    m_navigationBar->addAction(m_historyBack);
+            this, SLOT(openActionUrl(QAction *)));
+    m_navigationBar->addAction(m_historyBackAction);
 
-    m_historyForward->setIcon(style()->standardIcon(QStyle::SP_ArrowForward, 0, this));
+    m_historyForwardAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward, 0, this));
     m_historyForwardMenu = new QMenu(this);
     connect(m_historyForwardMenu, SIGNAL(aboutToShow()),
-            this, SLOT(slotAboutToShowForwardMenu()));
+            this, SLOT(aboutToShowForwardMenu()));
     connect(m_historyForwardMenu, SIGNAL(triggered(QAction *)),
-            this, SLOT(slotOpenActionUrl(QAction *)));
-    m_historyForward->setMenu(m_historyForwardMenu);
-    m_navigationBar->addAction(m_historyForward);
+            this, SLOT(openActionUrl(QAction *)));
+    m_historyForwardAction->setMenu(m_historyForwardMenu);
+    m_navigationBar->addAction(m_historyForwardAction);
 
-    m_stopReload = new QAction(this);
-    m_reloadIcon = style()->standardIcon(QStyle::SP_BrowserReload);
-    m_stopReload->setIcon(m_reloadIcon);
-
-    m_navigationBar->addAction(m_stopReload);
+    m_stopReloadAction = new QAction(this);
+    m_stopReloadAction->setIcon(m_reloadIcon);
+    m_navigationBar->addAction(m_stopReloadAction);
 
     m_navigationSplitter = new QSplitter(m_navigationBar);
-    m_navigationSplitter->addWidget(m_tabWidget->lineEditStack());
+    m_navigationSplitter->addWidget(m_tabWidget->locationBarStack());
+
     m_toolbarSearch = new ToolbarSearch(m_navigationBar);
     m_navigationSplitter->addWidget(m_toolbarSearch);
-    connect(m_toolbarSearch, SIGNAL(search(const QUrl&)), SLOT(loadUrl(const QUrl&)));
+    connect(m_toolbarSearch, SIGNAL(search(const QUrl&, TabWidget::OpenUrlIn)),
+            m_tabWidget, SLOT(loadUrl(const QUrl&, TabWidget::OpenUrlIn)));
     m_navigationSplitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-    m_tabWidget->lineEditStack()->setMinimumWidth(120);
+    m_tabWidget->locationBarStack()->setMinimumWidth(120);
     m_navigationSplitter->setCollapsible(0, false);
     m_navigationBar->addWidget(m_navigationSplitter);
     int splitterWidth = m_navigationSplitter->width();
@@ -523,155 +1061,122 @@ void BrowserMainWindow::setupToolBar()
     m_navigationSplitter->setSizes(sizes);
 }
 
-void BrowserMainWindow::slotShowBookmarksDialog()
+void BrowserMainWindow::showBookmarksDialog()
 {
     BookmarksDialog *dialog = new BookmarksDialog(this);
-    connect(dialog, SIGNAL(openUrl(const QUrl&, TabWidget::Tab, const QString &)),
-            m_tabWidget, SLOT(loadUrl(const QUrl&, TabWidget::Tab, const QString &)));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, SIGNAL(openUrl(const QUrl&, TabWidget::OpenUrlIn, const QString &)),
+            m_tabWidget, SLOT(loadUrl(const QUrl&, TabWidget::OpenUrlIn, const QString &)));
     dialog->show();
 }
 
-void BrowserMainWindow::slotAddBookmark()
+void BrowserMainWindow::addBookmark()
 {
     WebView *webView = currentTab();
-    QString url = webView->url().toString();
+    QString url = QLatin1String(webView->url().toEncoded());
     QString title = webView->title();
-    AddBookmarkDialog dialog(url, title);
+
+    AddBookmarkDialog dialog;
+    dialog.setUrl(url);
+    dialog.setTitle(title);
+    BookmarkNode *menu = BrowserApplication::bookmarksManager()->menu();
+    QModelIndex index = BrowserApplication::bookmarksManager()->bookmarksModel()->index(menu);
+    dialog.setCurrentIndex(index);
     dialog.exec();
 }
 
-void BrowserMainWindow::slotViewMenuBar()
+void BrowserMainWindow::addBookmarkFolder()
 {
-    menuBar()->setVisible(!menuBar()->isVisible());
+    AddBookmarkDialog dialog;
+    BookmarksManager *bookmarksManager = BrowserApplication::bookmarksManager();
+    BookmarkNode *menu = bookmarksManager->menu();
+    QModelIndex index = bookmarksManager->bookmarksModel()->index(menu);
+    dialog.setCurrentIndex(index);
+    dialog.setFolder(true);
+    dialog.exec();
 }
 
-void BrowserMainWindow::slotViewToolbar()
+void BrowserMainWindow::viewMenuBar()
+{
+    menuBar()->setVisible(!menuBar()->isVisible());
+
+    m_menuBarVisible = menuBar()->isVisible();
+    m_autoSaver->changeOccurred();
+}
+
+void BrowserMainWindow::viewToolbar()
 {
     if (m_navigationBar->isVisible()) {
-        updateToolbarActionText(false);
         m_navigationBar->close();
     } else {
-        updateToolbarActionText(true);
         m_navigationBar->show();
     }
     m_autoSaver->changeOccurred();
 }
 
-void BrowserMainWindow::slotViewBookmarksBar()
+void BrowserMainWindow::viewBookmarksBar()
 {
     if (m_bookmarksToolbar->isVisible()) {
-        updateBookmarksToolbarActionText(false);
-        m_bookmarksToolbar->close();
+        m_bookmarksToolbar->hide();
+#if defined(Q_WS_MAC)
+        m_bookmarksToolbarFrame->hide();
+#endif
     } else {
-        updateBookmarksToolbarActionText(true);
         m_bookmarksToolbar->show();
+#if defined(Q_WS_MAC)
+        m_bookmarksToolbarFrame->show();
+#endif
     }
     m_autoSaver->changeOccurred();
 }
 
-void BrowserMainWindow::updateStatusbarActionText(bool visible)
-{
-    m_viewStatusbar->setText(!visible ? tr("Show Status Bar") : tr("Hide Status Bar"));
-}
-
-void BrowserMainWindow::updateToolbarActionText(bool visible)
-{
-    m_viewToolbar->setText(!visible ? tr("Show Toolbar") : tr("Hide Toolbar"));
-}
-
-void BrowserMainWindow::updateBookmarksToolbarActionText(bool visible)
-{
-    m_viewBookmarkBar->setText(!visible ? tr("Show Bookmarks bar") : tr("Hide Bookmarks bar"));
-}
-
-void BrowserMainWindow::slotViewStatusbar()
+void BrowserMainWindow::viewStatusbar()
 {
     if (statusBar()->isVisible()) {
-        updateStatusbarActionText(false);
         statusBar()->close();
     } else {
-        updateStatusbarActionText(true);
         statusBar()->show();
     }
+
+    m_statusBarVisible = statusBar()->isVisible();
+
     m_autoSaver->changeOccurred();
 }
 
-QUrl BrowserMainWindow::guessUrlFromString(const QString &string)
-{
-    QString urlStr = string.trimmed();
-    QRegExp test(QLatin1String("^[a-zA-Z]+\\:.*"));
-
-    // Check if it looks like a qualified URL. Try parsing it and see.
-    bool hasSchema = test.exactMatch(urlStr);
-    if (hasSchema) {
-        QUrl url(urlStr, QUrl::TolerantMode);
-        if (url.isValid())
-            return url;
-    }
-
-    // Might be a file.
-    if (QFile::exists(urlStr)) {
-        QFileInfo info(urlStr);
-        return QUrl::fromLocalFile(info.absoluteFilePath());
-    }
-
-    // Might be a shorturl - try to detect the schema.
-    if (!hasSchema) {
-        int dotIndex = urlStr.indexOf(QLatin1Char('.'));
-        if (dotIndex != -1) {
-            QString prefix = urlStr.left(dotIndex).toLower();
-            QString schema = (prefix == QLatin1String("ftp")) ? prefix : QLatin1String("http");
-            QUrl url(schema + QLatin1String("://") + urlStr, QUrl::TolerantMode);
-            if (url.isValid())
-                return url;
-        }
-    }
-
-    // Fall back to QUrl's own tolerant parser.
-    QUrl url = QUrl(string, QUrl::TolerantMode);
-
-    // finally for cases where the user just types in a hostname add http
-    if (url.scheme().isEmpty())
-        url = QUrl(QLatin1String("http://") + string, QUrl::TolerantMode);
-    return url;
-}
-
-void BrowserMainWindow::loadUrl(const QUrl &url)
-{
-    loadPage(url.toString());
-}
-
-void BrowserMainWindow::slotDownloadManager()
+void BrowserMainWindow::downloadManager()
 {
     BrowserApplication::downloadManager()->show();
 }
 
-void BrowserMainWindow::slotSelectLineEdit()
+void BrowserMainWindow::selectLineEdit()
 {
-    m_tabWidget->currentLineEdit()->selectAll();
-    m_tabWidget->currentLineEdit()->setFocus();
+    if (m_navigationBar->isHidden())
+        m_navigationBar->show();
+
+    m_tabWidget->currentLocationBar()->selectAll();
+    m_tabWidget->currentLocationBar()->setFocus();
 }
 
-void BrowserMainWindow::slotFileSaveAs()
+void BrowserMainWindow::fileSaveAs()
 {
     BrowserApplication::downloadManager()->download(currentTab()->url(), true);
 }
 
-void BrowserMainWindow::slotPreferences()
+void BrowserMainWindow::preferences()
 {
-    SettingsDialog s(this);
-    s.exec();
+    SettingsDialog settingsDialog(this);
+    settingsDialog.exec();
 }
 
-void BrowserMainWindow::slotUpdateStatusbar(const QString &string)
+void BrowserMainWindow::updateStatusbar(const QString &string)
 {
     statusBar()->showMessage(string, 2000);
 }
 
-void BrowserMainWindow::slotUpdateWindowTitle(const QString &title)
+void BrowserMainWindow::updateWindowTitle(const QString &title)
 {
     if (title.isEmpty()) {
-        setWindowTitle(tr("Arora"));
+        setWindowTitle(QApplication::applicationName());
     } else {
 #if defined(Q_WS_MAC)
         setWindowTitle(title);
@@ -681,20 +1186,26 @@ void BrowserMainWindow::slotUpdateWindowTitle(const QString &title)
     }
 }
 
-void BrowserMainWindow::slotAboutApplication()
+void BrowserMainWindow::aboutApplication()
 {
     AboutDialog *aboutDialog = new AboutDialog(this);
+    aboutDialog->setAttribute(Qt::WA_DeleteOnClose);
     aboutDialog->show();
 }
 
-void BrowserMainWindow::slotFileNew()
+void BrowserMainWindow::fileNew()
 {
-    BrowserApplication::instance()->newMainWindow();
-    BrowserMainWindow *mw = BrowserApplication::instance()->mainWindow();
-    mw->slotHome();
+    BrowserMainWindow *window = BrowserApplication::instance()->newMainWindow();
+
+    QSettings settings;
+    settings.beginGroup(QLatin1String("MainWindow"));
+    int startup = settings.value(QLatin1String("startupBehavior")).toInt();
+
+    if (startup == 0)
+        window->goHome();
 }
 
-void BrowserMainWindow::slotFileOpen()
+void BrowserMainWindow::fileOpen()
 {
     QString file = QFileDialog::getOpenFileName(this, tr("Open Web Resource"), QString(),
                    tr("Web Resources (*.html *.htm *.svg *.png *.gif *.svgz);;All files (*.*)"));
@@ -702,20 +1213,20 @@ void BrowserMainWindow::slotFileOpen()
     if (file.isEmpty())
         return;
 
-    loadPage(file);
+    tabWidget()->loadUrl(QUrl::fromLocalFile(file));
 }
 
-void BrowserMainWindow::slotFilePrintPreview()
+void BrowserMainWindow::filePrintPreview()
 {
     if (!currentTab())
         return;
-    QPrintPreviewDialog *dialog = new QPrintPreviewDialog(this);
-    connect(dialog, SIGNAL(paintRequested(QPrinter *)),
+    QPrintPreviewDialog dialog(this);
+    connect(&dialog, SIGNAL(paintRequested(QPrinter *)),
             currentTab(), SLOT(print(QPrinter *)));
-    dialog->exec();
+    dialog.exec();
 }
 
-void BrowserMainWindow::slotFilePrint()
+void BrowserMainWindow::filePrint()
 {
     if (!currentTab())
         return;
@@ -725,57 +1236,76 @@ void BrowserMainWindow::slotFilePrint()
 void BrowserMainWindow::printRequested(QWebFrame *frame)
 {
     QPrinter printer;
-    QPrintDialog *dialog = new QPrintDialog(&printer, this);
-    dialog->setWindowTitle(tr("Print Document"));
-    if (dialog->exec() != QDialog::Accepted)
+    QPrintDialog dialog(&printer, this);
+    dialog.setWindowTitle(tr("Print Document"));
+    if (dialog.exec() != QDialog::Accepted)
         return;
     frame->print(&printer);
 }
 
-void BrowserMainWindow::slotPrivateBrowsing()
+void BrowserMainWindow::privateBrowsing()
 {
-    QWebSettings *settings = QWebSettings::globalSettings();
-    bool pb = settings->testAttribute(QWebSettings::PrivateBrowsingEnabled);
-    if (!pb) {
+    if (!BrowserApplication::isPrivate()) {
         QString title = tr("Are you sure you want to turn on private browsing?");
-        QString text = tr("<b>%1</b><br><br>When private browsing is turned on,"
-            " some actions concerning your privacy will be disabled:"
-            "<ul><li> Webpages are not added to the history.</li>"
-            "<li> Items are automatically removed from the Downloads window.</li>"
-            "<li> New cookies are not stored, current cookies can't be accessed.</li>"
-            "<li> Site icons won't be stored, session won't be saved.</li>"
-            "<li> Searches are not addded to the pop-up menu in the search box.</li></ul>"
-            "Until you close the window, you can still click the Back and Forward buttons"
-            " to return to the webpages you have opened.").arg(title);
+        QString text1 = tr("When private browsing is turned on, some actions concerning your privacy will be disabled:");
 
-        QMessageBox::StandardButton button = QMessageBox::question(this, QString(), text,
-                               QMessageBox::Ok | QMessageBox::Cancel,
-                               QMessageBox::Ok);
-        if (button == QMessageBox::Ok) {
-            settings->setAttribute(QWebSettings::PrivateBrowsingEnabled, true);
-        }
+        QStringList actions;
+        actions.append(tr("Webpages are not added to the history."));
+        actions.append(tr("Items are automatically removed from the Downloads window."));
+        actions.append(tr("New cookies are not stored, current cookies can't be accessed."));
+        actions.append(tr("Site icons won't be stored."));
+        actions.append(tr("Session won't be saved."));
+        actions.append(tr("Searches are not added to the pop-up menu in the search box."));
+        actions.append(tr("No new network cache is written to disk."));
+
+        QString text2 = tr("Until you close the window, you can still click the Back and Forward "
+                           "buttons to return to the webpages you have opened.");
+
+        QString message = QString(QLatin1String("<b>%1</b><p>%2</p><ul><li>%3</li></ul><p>%4</p>"))
+                          .arg(title, text1, actions.join(QLatin1String("</li><li>")), text2);
+
+        QMessageBox::StandardButton button = QMessageBox::question(this, tr("Private Browsing"), message,
+                                                                   QMessageBox::Ok | QMessageBox::Cancel,
+                                                                   QMessageBox::Ok);
+        if (button == QMessageBox::Ok)
+            BrowserApplication::setPrivate(true);
+        else
+            m_filePrivateBrowsingAction->setChecked(false);
     } else {
-        settings->setAttribute(QWebSettings::PrivateBrowsingEnabled, false);
-
-        QList<BrowserMainWindow*> windows = BrowserApplication::instance()->mainWindows();
-        for (int i = 0; i < windows.count(); ++i) {
-            BrowserMainWindow *window = windows.at(i);
-            window->tabWidget()->clear();
-        }
+        BrowserApplication::setPrivate(false);
     }
-    m_privateBrowsing->setChecked(settings->testAttribute(QWebSettings::PrivateBrowsingEnabled));
+}
+
+void BrowserMainWindow::zoomTextOnlyChanged(bool textOnly)
+{
+    m_viewZoomTextOnlyAction->setChecked(textOnly);
+}
+
+void BrowserMainWindow::privacyChanged(bool isPrivate)
+{
+    m_filePrivateBrowsingAction->setChecked(isPrivate);
+    if (!isPrivate)
+        tabWidget()->clear();
 }
 
 void BrowserMainWindow::closeEvent(QCloseEvent *event)
 {
+    if (!BrowserApplication::instance()->allowToCloseWindow(this)) {
+        event->ignore();
+        if (m_tabWidget->count() == 0)
+            m_tabWidget->newTab();
+        return;
+    }
+
     if (m_tabWidget->count() > 1) {
         QSettings settings;
         settings.beginGroup(QLatin1String("tabs"));
         bool confirm = settings.value(QLatin1String("confirmClosingMultipleTabs"), true).toBool();
         if (confirm) {
+            QApplication::alert(this);
             int ret = QMessageBox::warning(this, QString(),
                                            tr("Are you sure you want to close the window?"
-                                              "  There are %1 tab open").arg(m_tabWidget->count()),
+                                              "  There are %1 tabs open").arg(m_tabWidget->count()),
                                            QMessageBox::Yes | QMessageBox::No,
                                            QMessageBox::No);
             if (ret == QMessageBox::No) {
@@ -784,89 +1314,119 @@ void BrowserMainWindow::closeEvent(QCloseEvent *event)
             }
         }
     }
+
     event->accept();
-    deleteLater();
 }
 
-void BrowserMainWindow::slotEditFind()
+void BrowserMainWindow::mousePressEvent(QMouseEvent *event)
+{
+    switch (event->button()) {
+    case Qt::XButton1:
+        m_historyBackAction->activate(QAction::Trigger);
+        break;
+    case Qt::XButton2:
+        m_historyForwardAction->activate(QAction::Trigger);
+        break;
+    default:
+        QMainWindow::mousePressEvent(event);
+        break;
+    }
+}
+
+void BrowserMainWindow::changeEvent(QEvent *event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslate();
+    QMainWindow::changeEvent(event);
+}
+
+void BrowserMainWindow::editFind()
 {
     tabWidget()->webViewSearch(m_tabWidget->currentIndex())->showFind();
 }
 
-void BrowserMainWindow::slotEditFindNext()
+void BrowserMainWindow::editFindNext()
 {
     tabWidget()->webViewSearch(m_tabWidget->currentIndex())->findNext();
 }
 
-void BrowserMainWindow::slotEditFindPrevious()
+void BrowserMainWindow::editFindPrevious()
 {
     tabWidget()->webViewSearch(m_tabWidget->currentIndex())->findPrevious();
 }
 
-void BrowserMainWindow::slotViewTextBigger()
+void BrowserMainWindow::zoomIn()
 {
     if (!currentTab())
         return;
-    currentTab()->setTextSizeMultiplier(currentTab()->textSizeMultiplier() + 0.1);
+    currentTab()->zoomIn();
 }
 
-void BrowserMainWindow::slotViewTextNormal()
+void BrowserMainWindow::zoomNormal()
 {
     if (!currentTab())
         return;
-    currentTab()->setTextSizeMultiplier(1.0);
+    currentTab()->resetZoom();
 }
 
-void BrowserMainWindow::slotViewTextSmaller()
+void BrowserMainWindow::zoomOut()
 {
     if (!currentTab())
         return;
-    currentTab()->setTextSizeMultiplier(currentTab()->textSizeMultiplier() - 0.1);
+    currentTab()->zoomOut();
 }
 
-void BrowserMainWindow::slotViewFullScreen(bool makeFullScreen)
+void BrowserMainWindow::viewFullScreen(bool makeFullScreen)
 {
     if (makeFullScreen) {
+        setUnifiedTitleAndToolBarOnMac(false);
         setWindowState(windowState() | Qt::WindowFullScreen);
+
+        menuBar()->hide();
+        statusBar()->hide();
     } else {
         setWindowState(windowState() & ~Qt::WindowFullScreen);
+
+        setUnifiedTitleAndToolBarOnMac(true);
+        menuBar()->setVisible(m_menuBarVisible);
+        statusBar()->setVisible(m_statusBarVisible);
     }
 }
 
-void BrowserMainWindow::slotViewPageSource()
+void BrowserMainWindow::viewPageSource()
 {
     if (!currentTab())
         return;
 
+    QString title = currentTab()->title();
     QString markup = currentTab()->page()->mainFrame()->toHtml();
-    QPlainTextEdit *view = new QPlainTextEdit(markup);
-    view->setWindowTitle(tr("Page Source of %1").arg(currentTab()->title()));
-    view->setMinimumWidth(640);
-    view->setAttribute(Qt::WA_DeleteOnClose);
-    view->show();
+    QUrl url = currentTab()->url();
+    SourceViewer *viewer = new SourceViewer(markup, title, url);
+    viewer->setAttribute(Qt::WA_DeleteOnClose);
+    viewer->show();
 }
 
-void BrowserMainWindow::slotHome()
+void BrowserMainWindow::goHome()
 {
     QSettings settings;
     settings.beginGroup(QLatin1String("MainWindow"));
-    QString home = settings.value(QLatin1String("home"), QLatin1String("http://www.arora-browser.org")).toString();
-    loadPage(home);
+    QString home = settings.value(QLatin1String("home"), QLatin1String("about:home")).toString();
+    tabWidget()->loadString(home);
 }
 
-void BrowserMainWindow::slotWebSearch()
+void BrowserMainWindow::webSearch()
 {
-    m_toolbarSearch->lineEdit()->selectAll();
-    m_toolbarSearch->lineEdit()->setFocus();
+    m_toolbarSearch->selectAll();
+    m_toolbarSearch->setFocus();
 }
 
-void BrowserMainWindow::slotClearPrivateData()
+void BrowserMainWindow::clearPrivateData()
 {
     ClearPrivateData dialog;
     dialog.exec();
 }
 
-void BrowserMainWindow::slotToggleInspector(bool enable)
+void BrowserMainWindow::toggleInspector(bool enable)
 {
     QWebSettings::globalSettings()->setAttribute(QWebSettings::DeveloperExtrasEnabled, enable);
     if (enable) {
@@ -878,26 +1438,19 @@ void BrowserMainWindow::slotToggleInspector(bool enable)
             m_tabWidget->reloadAllTabs();
         }
     }
+    QSettings settings;
+    settings.beginGroup(QLatin1String("websettings"));
+    settings.setValue(QLatin1String("enableInspector"), enable);
 }
 
-void BrowserMainWindow::slotSwapFocus()
+void BrowserMainWindow::swapFocus()
 {
     if (currentTab()->hasFocus()) {
-        m_tabWidget->currentLineEdit()->setFocus();
-        m_tabWidget->currentLineEdit()->selectAll();
+        m_tabWidget->currentLocationBar()->setFocus();
+        m_tabWidget->currentLocationBar()->selectAll();
     } else {
         currentTab()->setFocus();
     }
-}
-
-void BrowserMainWindow::loadPage(const QString &page)
-{
-    if (!currentTab() || page.isEmpty())
-        return;
-
-    QUrl url = guessUrlFromString(page);
-    m_tabWidget->currentLineEdit()->setText(url.toString());
-    m_tabWidget->loadUrl(url, TabWidget::CurrentTab);
 }
 
 TabWidget *BrowserMainWindow::tabWidget() const
@@ -915,24 +1468,39 @@ ToolbarSearch *BrowserMainWindow::toolbarSearch() const
     return m_toolbarSearch;
 }
 
-void BrowserMainWindow::slotLoadProgress(int progress)
+void BrowserMainWindow::updateStopReloadActionText(bool loading)
 {
-    if (progress < 100 && progress > 0) {
-        disconnect(m_stopReload, SIGNAL(triggered()), m_reload, SLOT(trigger()));
-        if (m_stopIcon.isNull())
-            m_stopIcon = style()->standardIcon(QStyle::SP_BrowserStop);
-        m_stopReload->setIcon(m_stopIcon);
-        connect(m_stopReload, SIGNAL(triggered()), m_stop, SLOT(trigger()));
-        m_stopReload->setToolTip(tr("Stop loading the current page"));
+    if (loading) {
+        m_stopReloadAction->setToolTip(tr("Stop loading the current page"));
+        m_stopReloadAction->setIconText(tr("Stop"));
     } else {
-        disconnect(m_stopReload, SIGNAL(triggered()), m_stop, SLOT(trigger()));
-        m_stopReload->setIcon(m_reloadIcon);
-        connect(m_stopReload, SIGNAL(triggered()), m_reload, SLOT(trigger()));
-        m_stopReload->setToolTip(tr("Reload the current page"));
+        m_stopReloadAction->setToolTip(tr("Reload the current page"));
+        m_stopReloadAction->setIconText(tr("Reload"));
     }
 }
 
-void BrowserMainWindow::slotAboutToShowBackMenu()
+void BrowserMainWindow::loadProgress(int progress)
+{
+    if (progress < 100 && progress > 0) {
+        disconnect(m_stopReloadAction, SIGNAL(triggered()), m_viewReloadAction, SLOT(trigger()));
+        m_stopReloadAction->setIcon(m_stopIcon);
+        connect(m_stopReloadAction, SIGNAL(triggered()), m_viewStopAction, SLOT(trigger()));
+        updateStopReloadActionText(true);
+    } else {
+        disconnect(m_stopReloadAction, SIGNAL(triggered()), m_viewStopAction, SLOT(trigger()));
+        m_stopReloadAction->setIcon(m_reloadIcon);
+        connect(m_stopReloadAction, SIGNAL(triggered()), m_viewReloadAction, SLOT(trigger()));
+        updateStopReloadActionText(false);
+    }
+}
+
+void BrowserMainWindow::showSearchDialog()
+{
+    OpenSearchDialog dialog(this);
+    dialog.exec();
+}
+
+void BrowserMainWindow::aboutToShowBackMenu()
 {
     m_historyBackMenu->clear();
     if (!currentTab())
@@ -950,7 +1518,7 @@ void BrowserMainWindow::slotAboutToShowBackMenu()
     }
 }
 
-void BrowserMainWindow::slotAboutToShowForwardMenu()
+void BrowserMainWindow::aboutToShowForwardMenu()
 {
     m_historyForwardMenu->clear();
     if (!currentTab())
@@ -968,19 +1536,25 @@ void BrowserMainWindow::slotAboutToShowForwardMenu()
     }
 }
 
-void BrowserMainWindow::slotAboutToShowWindowMenu()
+void BrowserMainWindow::aboutToShowWindowMenu()
 {
     m_windowMenu->clear();
     m_windowMenu->addAction(m_tabWidget->nextTabAction());
     m_windowMenu->addAction(m_tabWidget->previousTabAction());
     m_windowMenu->addSeparator();
-    m_windowMenu->addAction(tr("Downloads"), this, SLOT(slotDownloadManager()), QKeySequence(tr("Alt+Ctrl+L", "Download Manager")));
+    QAction *downloadManagerAction = m_windowMenu->addAction(tr("Downloads"), this, SLOT(downloadManager()), QKeySequence(tr("Ctrl+Y", "Download Manager")));
+
+#if QT_VERSION >= 0x040600
+    downloadManagerAction->setIcon(QIcon::fromTheme(QLatin1String("emblem-downloads")));
+#else
+    Q_UNUSED(downloadManagerAction);
+#endif
 
     m_windowMenu->addSeparator();
     QList<BrowserMainWindow*> windows = BrowserApplication::instance()->mainWindows();
     for (int i = 0; i < windows.count(); ++i) {
         BrowserMainWindow *window = windows.at(i);
-        QAction *action = m_windowMenu->addAction(window->windowTitle(), this, SLOT(slotShowWindow()));
+        QAction *action = m_windowMenu->addAction(window->windowTitle(), this, SLOT(showWindow()));
         action->setData(i);
         action->setCheckable(true);
         if (window == this)
@@ -988,7 +1562,7 @@ void BrowserMainWindow::slotAboutToShowWindowMenu()
     }
 }
 
-void BrowserMainWindow::slotShowWindow()
+void BrowserMainWindow::showWindow()
 {
     if (QAction *action = qobject_cast<QAction*>(sender())) {
         QVariant v = action->data();
@@ -996,12 +1570,13 @@ void BrowserMainWindow::slotShowWindow()
             int offset = qvariant_cast<int>(v);
             QList<BrowserMainWindow*> windows = BrowserApplication::instance()->mainWindows();
             windows.at(offset)->activateWindow();
+            windows.at(offset)->raise();
             windows.at(offset)->currentTab()->setFocus();
         }
     }
 }
 
-void BrowserMainWindow::slotOpenActionUrl(QAction *action)
+void BrowserMainWindow::openActionUrl(QAction *action)
 {
     int offset = action->data().toInt();
     QWebHistory *history = currentTab()->history();

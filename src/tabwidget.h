@@ -76,10 +76,12 @@ class QMenu;
 class QStackedWidget;
 QT_END_NAMESPACE
 
+class BrowserMainWindow;
 class TabBar;
 class WebView;
 class WebActionMapper;
 class WebViewSearch;
+class QToolButton;
 
 /*!
     TabWidget that contains WebViews and a stack widget of associated line edits.
@@ -93,7 +95,6 @@ class TabWidget : public QTabWidget
 
 signals:
     // tab widget signals
-    void loadPage(const QString &url);
     void tabsChanged();
     void lastTabClosed();
 
@@ -109,44 +110,52 @@ signals:
     void printRequested(QWebFrame *frame);
 
 public:
-    enum Tab {
+    enum OpenUrlIn {
+        NewWindow,
+        NewSelectedTab,
+        NewNotSelectedTab,
         CurrentTab,
-        NewTab
+        UserOrCurrent,
+        NewTab = NewNotSelectedTab
     };
 
     TabWidget(QWidget *parent = 0);
+
+    void loadSettings();
     TabBar *tabBar() { return m_tabBar; }
     void clear();
     void addWebAction(QAction *action, QWebPage::WebAction webAction);
 
     QAction *newTabAction() const;
     QAction *closeTabAction() const;
+    QAction *bookmarkTabsAction() const;
     QAction *recentlyClosedTabsAction() const;
     QAction *nextTabAction() const;
     QAction *previousTabAction() const;
 
-    QWidget *lineEditStack() const;
-    QLineEdit *currentLineEdit() const;
+    QWidget *locationBarStack() const;
+    QLineEdit *currentLocationBar() const;
     WebView *currentWebView() const;
     WebView *webView(int index) const;
     WebViewSearch *webViewSearch(int index) const;
-    QLineEdit *lineEdit(int index) const;
+    QLineEdit *locationBar(int index) const;
     int webViewIndex(WebView *webView) const;
     WebView *makeNewTab(bool makeCurrent = false);
 
     QByteArray saveState() const;
     bool restoreState(const QByteArray &state);
 
+    static OpenUrlIn modifyWithUserBehavior(OpenUrlIn tab);
+    WebView *getView(OpenUrlIn tab, WebView *currentView);
+
 protected:
-    void contextMenuEvent(QContextMenuEvent *event);
-#if QT_VERSION < 0x040500
-    void mouseDoubleClickEvent(QMouseEvent *event);
-    void mouseReleaseEvent(QMouseEvent *event);
-    void wheelEvent(QWheelEvent *event);
-#endif
+    void changeEvent(QEvent *event);
 
 public slots:
-    void loadUrl(const QUrl &url, TabWidget::Tab type = CurrentTab, const QString &title = QString());
+    void loadString(const QString &string, OpenUrlIn tab = CurrentTab);
+    void loadUrlFromUser(const QUrl &url, const QString &title = QString());
+    void loadUrl(const QUrl &url, TabWidget::OpenUrlIn tab = CurrentTab, const QString &title = QString());
+    void createTab(const QByteArray &historyState, TabWidget::OpenUrlIn tab = CurrentTab);
     void newTab();
     void cloneTab(int index = -1);
     void closeTab(int index = -1);
@@ -155,6 +164,7 @@ public slots:
     void reloadAllTabs();
     void nextTab();
     void previousTab();
+    void bookmarkTabs();
 
 private slots:
     void currentChanged(int index);
@@ -162,31 +172,43 @@ private slots:
     void aboutToShowRecentTabsMenu();
     void aboutToShowRecentTriggeredAction(QAction *action);
     void webViewLoadStarted();
-    void webViewLoadFinished();
+    void webViewLoadProgress(int progress);
+    void webViewLoadFinished(bool ok);
     void webViewIconChanged();
     void webViewTitleChanged(const QString &title);
     void webViewUrlChanged(const QUrl &url);
     void lineEditReturnPressed();
     void windowCloseRequested();
     void moveTab(int fromIndex, int toIndex);
+    void geometryChangeRequestedCheck(const QRect &geometry);
+    void menuBarVisibilityChangeRequestedCheck(bool visible);
+    void statusBarVisibilityChangeRequestedCheck(bool visible);
+    void toolBarVisibilityChangeRequestedCheck(bool visible);
+    void historyCleared();
 
 private:
+    static QUrl guessUrlFromString(const QString &url);
     QLabel *animationLabel(int index, bool addMovie);
+    void retranslate();
 
     QAction *m_recentlyClosedTabsAction;
     QAction *m_newTabAction;
     QAction *m_closeTabAction;
+    QAction *m_bookmarkTabsAction;
     QAction *m_nextTabAction;
     QAction *m_previousTabAction;
 
     QMenu *m_recentlyClosedTabsMenu;
     static const int m_recentlyClosedTabsSize = 10;
     QList<QUrl> m_recentlyClosedTabs;
+    QList<QByteArray> m_recentlyClosedTabsHistory;
     QList<WebActionMapper*> m_actions;
 
     QCompleter *m_lineEditCompleter;
-    QStackedWidget *m_lineEdits;
+    QStackedWidget *m_locationBars;
     TabBar *m_tabBar;
+    QToolButton *addTabButton;
+    QToolButton *closeTabButton;
 };
 
 #endif // TABWIDGET_H

@@ -25,6 +25,8 @@
 #include <webactionmapper.h>
 #include <webview.h>
 
+#include "qtest_arora.h"
+
 class tst_WebActionMapper : public QObject
 {
     Q_OBJECT
@@ -54,7 +56,7 @@ class SubWebActionMapper : public WebActionMapper
 {
 public:
     SubWebActionMapper(QAction *root, QWebPage::WebAction webAction, QObject *parent)
-        : WebActionMapper(root, webAction, parent){}
+        : WebActionMapper(root, webAction, parent) {}
 
 };
 
@@ -92,7 +94,7 @@ void tst_WebActionMapper::webactionmapper()
     QCOMPARE(mapper.webAction(), QWebPage::Stop);
 }
 
-// public void addChild(QAction* action)
+// public void addChild(QAction *action)
 void tst_WebActionMapper::addChild()
 {
     QAction *root = new QAction(this);
@@ -112,7 +114,7 @@ void tst_WebActionMapper::updateCurrent_data()
     QTest::newRow("null") << 0;
 }
 
-// public void updateCurrent(WebView* currentParent)
+// public void updateCurrent(WebView *currentParent)
 void tst_WebActionMapper::updateCurrent()
 {
     QAction *root = new QAction(this);

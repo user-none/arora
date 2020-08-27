@@ -65,7 +65,7 @@
 
 #include <qtabbar.h>
 
-#include <tabwidget.h>
+#include "tabwidget.h"
 
 /*
     Tab bar with a few more features such as a context menu and shortcuts
@@ -81,8 +81,7 @@ signals:
     void closeOtherTabs(int index);
     void reloadTab(int index);
     void reloadAllTabs();
-    void tabMoveRequested(int fromIndex, int toIndex);
-    void loadUrl(const QUrl &url, TabWidget::Tab type);
+    void loadUrl(const QUrl &url, TabWidget::OpenUrlIn tab);
 
 public:
     TabBar(QWidget *parent = 0);
@@ -90,15 +89,13 @@ public:
     bool showTabBarWhenOneTab() const;
     void setShowTabBarWhenOneTab(bool enabled);
     QAction *viewTabBarAction() const;
-#if QT_VERSION >= 0x040500
     QTabBar::ButtonPosition freeSide();
-#endif
 
 protected:
     void mouseDoubleClickEvent(QMouseEvent *event);
     void mouseReleaseEvent(QMouseEvent *event);
-    void mousePressEvent(QMouseEvent* event);
-    void mouseMoveEvent(QMouseEvent* event);
+    void mousePressEvent(QMouseEvent *event);
+    void mouseMoveEvent(QMouseEvent *event);
     void dragEnterEvent(QDragEnterEvent *event);
     void dropEvent(QDropEvent *event);
     QSize tabSizeHint(int index) const;
@@ -120,7 +117,6 @@ private:
     friend class TabWidget;
 
     QPoint m_dragStartPos;
-    int m_dragCurrentIndex;
     QAction *m_viewTabBarAction;
     bool m_showTabBarWhenOneTab;
 };

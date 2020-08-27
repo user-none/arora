@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Jason A. Donenfeld <Jason@zx2c4.com>
+ * Copyright 2008-2009 Jason A. Donenfeld <Jason@zx2c4.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,19 +17,24 @@
  * Boston, MA  02110-1301  USA
  */
 
+#include "clearprivatedata.h"
+
 #include "browserapplication.h"
 #include "browsermainwindow.h"
-#include "clearprivatedata.h"
 #include "cookiejar.h"
 #include "downloadmanager.h"
-#include "history.h"
+#include "historymanager.h"
+#include "networkaccessmanager.h"
 #include "toolbarsearch.h"
 
+#include <qabstractnetworkcache.h>
 #include <qcheckbox.h>
+#include <qdialogbuttonbox.h>
 #include <qlabel.h>
 #include <qlayout.h>
 #include <qlist.h>
 #include <qpushbutton.h>
+#include <qsettings.h>
 #include <qwebsettings.h>
 
 ClearPrivateData::ClearPrivateData(QWidget *parent)
@@ -40,29 +45,38 @@ ClearPrivateData::ClearPrivateData(QWidget *parent)
     QVBoxLayout *layout = new QVBoxLayout();
     layout->addWidget(new QLabel(tr("Clear the following items:")));
 
+    QSettings settings;
+    settings.beginGroup(QLatin1String("clearprivatedata"));
+
     m_browsingHistory = new QCheckBox(tr("&Browsing History"));
-    m_browsingHistory->setChecked(true);
+    m_browsingHistory->setChecked(settings.value(QLatin1String("browsingHistory"), true).toBool());
     layout->addWidget(m_browsingHistory);
 
     m_downloadHistory = new QCheckBox(tr("&Download History"));
-    m_downloadHistory->setChecked(true);
+    m_downloadHistory->setChecked(settings.value(QLatin1String("downloadHistory"), true).toBool());
     layout->addWidget(m_downloadHistory);
 
     m_searchHistory = new QCheckBox(tr("&Search History"));
-    m_searchHistory->setChecked(true);
+    m_searchHistory->setChecked(settings.value(QLatin1String("searchHistory"), true).toBool());
     layout->addWidget(m_searchHistory);
 
     m_cookies = new QCheckBox(tr("&Cookies"));
-    m_cookies->setChecked(true);
+    m_cookies->setChecked(settings.value(QLatin1String("cookies"), true).toBool());
     layout->addWidget(m_cookies);
 
-    m_cache = new QCheckBox(tr("C&ache"));
-    m_cache->setEnabled(false);
+    m_cache = new QCheckBox(tr("C&ached Web Pages"));
+    if (BrowserApplication::networkAccessManager()->cache()) {
+        m_cache->setChecked(settings.value(QLatin1String("cache"), true).toBool());
+    } else {
+        m_cache->setEnabled(false);
+    }
     layout->addWidget(m_cache);
 
     m_favIcons = new QCheckBox(tr("Website &Icons"));
-    m_favIcons->setChecked(true);
+    m_favIcons->setChecked(settings.value(QLatin1String("favIcons"), true).toBool());
     layout->addWidget(m_favIcons);
+
+    settings.endGroup();
 
     QPushButton *acceptButton = new QPushButton(tr("Clear &Private Data"));
     acceptButton->setDefault(true);
@@ -80,25 +94,42 @@ ClearPrivateData::ClearPrivateData(QWidget *parent)
 
 void ClearPrivateData::accept()
 {
+    QSettings settings;
+    settings.beginGroup(QLatin1String("clearprivatedata"));
+
+    settings.setValue(QLatin1String("browsingHistory"), m_browsingHistory->isChecked());
+    settings.setValue(QLatin1String("downloadHistory"), m_downloadHistory->isChecked());
+    settings.setValue(QLatin1String("searchHistory"), m_searchHistory->isChecked());
+    settings.setValue(QLatin1String("cookies"), m_cookies->isChecked());
+    settings.setValue(QLatin1String("cache"), m_cache->isChecked());
+    settings.setValue(QLatin1String("favIcons"), m_favIcons->isChecked());
+
+    settings.endGroup();
+
     if (m_browsingHistory->isChecked()) {
         BrowserApplication::historyManager()->clear();
     }
+
     if (m_downloadHistory->isChecked()) {
         BrowserApplication::downloadManager()->cleanup();
         BrowserApplication::downloadManager()->hide();
     }
+
     if (m_searchHistory->isChecked()) {
         QList<BrowserMainWindow*> mainWindows = BrowserApplication::instance()->mainWindows();
         for (int i = 0; i < mainWindows.count(); ++i) {
-            mainWindows.at(i)->toolbarSearch()->clear();
+            mainWindows.at(i)->toolbarSearch()->setText(QString());
         }
     }
+
     if (m_cookies->isChecked()) {
         BrowserApplication::cookieJar()->clear();
     }
-    if (m_cache->isChecked()) {
-        //not implemented
+
+    if (m_cache->isChecked() && BrowserApplication::networkAccessManager()->cache()) {
+        BrowserApplication::networkAccessManager()->cache()->clear();
     }
+
     if (m_favIcons->isChecked()) {
         QWebSettings::clearIconDatabase();
     }

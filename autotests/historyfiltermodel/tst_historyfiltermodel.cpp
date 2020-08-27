@@ -19,6 +19,7 @@
 
 #include <QtTest/QtTest>
 #include <history.h>
+#include <historymanager.h>
 
 class tst_HistoryFilterModel : public QObject
 {
@@ -59,7 +60,7 @@ public:
         history = new HistoryManager(this);
         historyModel = new HistoryModel(history, this);
         setSourceModel(historyModel);
-        history->setHistoryLimit(-1);
+        history->setDaysToExpire(-1);
     }
 
     HistoryModel *historyModel;
@@ -100,16 +101,16 @@ void tst_HistoryFilterModel::historyfiltermodel()
     model.historyLocation(QString());
 }
 
-typedef QList<HistoryItem> HistoryList;
+typedef QList<HistoryEntry> HistoryList;
 Q_DECLARE_METATYPE(HistoryList)
-Q_DECLARE_METATYPE(HistoryItem)
+Q_DECLARE_METATYPE(HistoryEntry)
 
 HistoryList makeHistoryList(int count)
 {
     HistoryList list;
     QDateTime dateTime = QDateTime::currentDateTime();
     for (int i = 0; i < count; ++i) {
-        HistoryItem item;
+        HistoryEntry item;
         QString url = QString("http://%1host-%2.com/")
             .arg(qrand() % 2 ? "www." : "")
             .arg(QString::number(i));
@@ -140,7 +141,7 @@ void tst_HistoryFilterModel::historyContains_data()
     QTest::newRow("many-3") << list2 << QString("foo") << false;
 }
 
-// public bool historyContains(QString const& url) const
+// public bool historyContains(QString const &url) const
 void tst_HistoryFilterModel::historyContains()
 {
     QFETCH(HistoryList, list);
@@ -153,7 +154,7 @@ void tst_HistoryFilterModel::historyContains()
     QCOMPARE(model.historyContains(url), historyContains);
 }
 
-// public void setSourceModel(QAbstractItemModel* sourceModel)
+// public void setSourceModel(QAbstractItemModel *sourceModel)
 void tst_HistoryFilterModel::setSourceModel()
 {
     SubHistoryFilterModel model;

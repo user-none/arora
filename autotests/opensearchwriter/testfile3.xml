@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+    <ShortName>Foo Bar</ShortName>
+    <Description>Bar Foo</Description>
+    <Url method="post" type="text/html" template="http://foobar.barfoo/search" xmlns:p="http://a9.com/-/spec/opensearch/extensions/parameters/1.0/">
+        <p:Parameter name="q" value="{searchTerms}"/>
+        <p:Parameter name="a" value="foo"/>
+    </Url>
+    <Url method="get" type="application/x-suggestions+json" template="http://foobar.barfoo/suggest" xmlns:p="http://a9.com/-/spec/opensearch/extensions/parameters/1.0/">
+        <p:Parameter name="q" value="{searchTerms}"/>
+    </Url>
+</OpenSearchDescription>

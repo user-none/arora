@@ -1,0 +1,3 @@
+version=3
+http://code.google.com/p/arora/downloads/list \
+   http://arora.googlecode.com/files/arora-([\d\.]+)\.tar\.gz

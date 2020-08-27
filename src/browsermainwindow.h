@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Benjamin C. Meyer <ben@meyerhome.net>
+ * Copyright 2008-2009 Benjamin C. Meyer <ben@meyerhome.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,17 +64,18 @@
 #define BROWSERMAINWINDOW_H
 
 #include <qmainwindow.h>
-#include <qicon.h>
-#include <qurl.h>
 
 class AutoSaver;
 class BookmarksToolBar;
-class ChaseWidget;
 class QWebFrame;
 class TabWidget;
 class ToolbarSearch;
 class WebView;
 class QSplitter;
+class QFrame;
+class HistoryMenu;
+class BookmarksMenuBarMenu;
+class UserAgentMenu;
 
 /*!
     The MainWindow of the Browser Application.
@@ -91,102 +92,180 @@ public:
     QSize sizeHint() const;
 
 public:
-    static QUrl guessUrlFromString(const QString &url);
+    static BrowserMainWindow *parentWindow(QWidget *widget);
+
     TabWidget *tabWidget() const;
     WebView *currentTab() const;
     ToolbarSearch *toolbarSearch() const;
     QByteArray saveState(bool withTabs = true) const;
     bool restoreState(const QByteArray &state);
+    QAction *showMenuBarAction() const;
+    QAction *searchManagerAction() const { return m_toolsSearchManagerAction; }
 
 public slots:
-    void loadPage(const QString &url);
-    void slotHome();
+    void goHome();
+    void privacyChanged(bool isPrivate);
+    void zoomTextOnlyChanged(bool textOnly);
 
 protected:
     void closeEvent(QCloseEvent *event);
+    void keyPressEvent(QKeyEvent *event);
+    void mousePressEvent(QMouseEvent *event);
+    void changeEvent(QEvent *event);
 
 private slots:
     void save();
 
-    void slotLoadProgress(int);
-    void slotUpdateStatusbar(const QString &string);
-    void slotUpdateWindowTitle(const QString &title = QString());
+    void lastTabClosed();
 
-    void loadUrl(const QUrl &url);
-    void slotPreferences();
+    void loadProgress(int);
+    void updateStatusbar(const QString &string);
+    void updateWindowTitle(const QString &title = QString());
 
-    void slotFileNew();
-    void slotFileOpen();
-    void slotFilePrintPreview();
-    void slotFilePrint();
-    void slotPrivateBrowsing();
-    void slotFileSaveAs();
-    void slotEditFind();
-    void slotEditFindNext();
-    void slotEditFindPrevious();
-    void slotShowBookmarksDialog();
-    void slotAddBookmark();
-    void slotViewTextBigger();
-    void slotViewTextNormal();
-    void slotViewTextSmaller();
-    void slotViewMenuBar();
-    void slotViewToolbar();
-    void slotViewBookmarksBar();
-    void slotViewStatusbar();
-    void slotViewPageSource();
-    void slotViewFullScreen(bool enable);
+    void preferences();
 
-    void slotWebSearch();
-    void slotClearPrivateData();
-    void slotToggleInspector(bool enable);
-    void slotAboutApplication();
-    void slotDownloadManager();
-    void slotSelectLineEdit();
+    void fileNew();
+    void fileOpen();
+    void filePrintPreview();
+    void filePrint();
+    void privateBrowsing();
+    void fileSaveAs();
+    void editFind();
+    void editFindNext();
+    void editFindPrevious();
+    void showBookmarksDialog();
+    void addBookmark();
+    void addBookmarkFolder();
+    void zoomIn();
+    void zoomNormal();
+    void zoomOut();
+    void viewMenuBar();
+    void viewToolbar();
+    void viewBookmarksBar();
+    void viewStatusbar();
+    void viewPageSource();
+    void viewFullScreen(bool enable);
+    void viewTextEncoding(QAction *action);
 
-    void slotAboutToShowBackMenu();
-    void slotAboutToShowForwardMenu();
-    void slotAboutToShowWindowMenu();
-    void slotOpenActionUrl(QAction *action);
-    void slotShowWindow();
-    void slotSwapFocus();
+    void webSearch();
+    void clearPrivateData();
+    void toggleInspector(bool enable);
+    void aboutApplication();
+    void downloadManager();
+    void selectLineEdit();
+
+    void aboutToShowBackMenu();
+    void aboutToShowForwardMenu();
+    void aboutToShowViewMenu();
+    void aboutToShowWindowMenu();
+    void aboutToShowTextEncodingMenu();
+    void openActionUrl(QAction *action);
+    void showSearchDialog();
+    void showWindow();
+    void swapFocus();
 
     void printRequested(QWebFrame *frame);
     void geometryChangeRequested(const QRect &geometry);
-    void updateToolbarActionText(bool visible);
-    void updateBookmarksToolbarActionText(bool visible);
 
 private:
+    void retranslate();
     void loadDefaultState();
     void setupMenu();
     void setupToolBar();
-    void updateStatusbarActionText(bool visible);
+    void updateStopReloadActionText(bool loading);
 
 private:
-    QToolBar *m_navigationBar;
-    QSplitter *m_navigationSplitter;
-    ToolbarSearch *m_toolbarSearch;
-    BookmarksToolBar *m_bookmarksToolbar;
-    TabWidget *m_tabWidget;
-    AutoSaver *m_autoSaver;
+    QMenu *m_fileMenu;
+    QAction *m_fileNewWindowAction;
+    QAction *m_fileOpenFileAction;
+    QAction *m_fileOpenLocationAction;
+    QAction *m_fileSaveAsAction;
+    QAction *m_fileImportBookmarksAction;
+    QAction *m_fileExportBookmarksAction;
+    QAction *m_filePrintPreviewAction;
+    QAction *m_filePrintAction;
+    QAction *m_filePrivateBrowsingAction;
+    QAction *m_fileCloseWindow;
+    QAction *m_fileQuit;
 
-    QAction *m_historyBack;
-    QMenu *m_historyBackMenu;
-    QAction *m_historyForward;
-    QMenu *m_historyForwardMenu;
+    QMenu *m_editMenu;
+    QAction *m_editUndoAction;
+    QAction *m_editRedoAction;
+    QAction *m_editCutAction;
+    QAction *m_editCopyAction;
+    QAction *m_editPasteAction;
+    QAction *m_editSelectAllAction;
+    QAction *m_editFindAction;
+    QAction *m_editFindNextAction;
+    QAction *m_editFindPreviousAction;
+
+    QMenu *m_viewMenu;
+    QAction *m_viewShowMenuBarAction;
+    QAction *m_viewToolbarAction;
+    QAction *m_viewBookmarkBarAction;
+    QAction *m_viewStatusbarAction;
+    QAction *m_viewStopAction;
+    QAction *m_viewReloadAction;
+    QAction *m_viewZoomInAction;
+    QAction *m_viewZoomNormalAction;
+    QAction *m_viewZoomOutAction;
+    QAction *m_viewZoomTextOnlyAction;
+    QAction *m_viewSourceAction;
+    QAction *m_viewFullScreenAction;
+    QAction *m_viewTextEncodingAction;
+    QMenu *m_viewTextEncodingMenu;
+
+    HistoryMenu *m_historyMenu;
+    QAction *m_historyBackAction;
+    QAction *m_historyForwardAction;
+    QAction *m_historyHomeAction;
+    QAction *m_historyRestoreLastSessionAction;
+
+    BookmarksMenuBarMenu *m_bookmarksMenu;
+    QAction *m_bookmarksShowAllAction;
+    QAction *m_bookmarksAddAction;
+    QAction *m_bookmarksAddFolderAction;
+
     QMenu *m_windowMenu;
-    QAction *m_privateBrowsing;
 
-    QAction *m_stop;
-    QAction *m_reload;
-    QAction *m_stopReload;
-    QAction *m_viewToolbar;
-    QAction *m_viewBookmarkBar;
-    QAction *m_viewStatusbar;
-    QAction *m_restoreLastSession;
-    QAction *m_addBookmark;
+    QMenu *m_toolsMenu;
+    QAction *m_toolsWebSearchAction;
+    QAction *m_toolsClearPrivateDataAction;
+    QAction *m_toolsEnableInspectorAction;
+    QAction *m_toolsPreferencesAction;
+    QAction *m_toolsSearchManagerAction;
+    UserAgentMenu *m_toolsUserAgentMenu;
+    QAction *m_adBlockDialogAction;
 
+    QMenu *m_helpMenu;
+    QAction *m_helpChangeLanguageAction;
+    QAction *m_helpAboutQtAction;
+    QAction *m_helpAboutApplicationAction;
+
+    // Toolbar
+    QToolBar *m_navigationBar;
+    QMenu *m_historyBackMenu;
+    QMenu *m_historyForwardMenu;
+    QAction *m_stopReloadAction;
     QIcon m_reloadIcon;
     QIcon m_stopIcon;
+    QSplitter *m_navigationSplitter;
+    ToolbarSearch *m_toolbarSearch;
+#if defined(Q_WS_MAC)
+    QFrame *m_bookmarksToolbarFrame;
+#endif
+    BookmarksToolBar *m_bookmarksToolbar;
+
+    TabWidget *m_tabWidget;
+
+    AutoSaver *m_autoSaver;
+
+    // These store if the user requested the menu/status bars visible. They are
+    // used to determine if these bars should be reshown when leaving fullscreen.
+    bool m_menuBarVisible;
+    bool m_statusBarVisible;
+
+    friend class BrowserApplication;
 };
 
 #endif // BROWSERMAINWINDOW_H

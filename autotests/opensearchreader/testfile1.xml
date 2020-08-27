@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+    <ShortName>Wikipedia (en)</ShortName>
+    <Description >Full text search in the English Wikipedia</Description>
+    <Url method="get" type="application/rss+xml" template="http://en.wikipedia.org/rss" />
+    <Url method="post" type="text/html" template="http://en.wikipedia.org/bar" />
+    <Url method="get" type="application/x-suggestions+json" template="http://en.wikipedia.org/foo" />
+    <Url method="get" template="http://en.wikipedia.org/baz" />
+    <Image width="16" height="16">http://en.wikipedia.org/favicon.ico</Image>
+</OpenSearchDescription>
